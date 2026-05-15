@@ -1,7 +1,7 @@
 "use client"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ShoppingCart, Package, BarChart3, DollarSign, BarChart2Icon, DollarSignIcon } from 'lucide-react'
+import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon } from 'lucide-react'
 
 export default function Navbar() {
   const pathname = usePathname()
@@ -15,20 +15,34 @@ export default function Navbar() {
   ]
 
   return (
-    <nav className="fixed bottom-0 w-full bg-white border-t flex justify-around p-2 md:relative md:border-t-0 md:border-r md:w-64 md:flex-col md:justify-start md:gap-2 md:p-4 z-40">
-      <div className="hidden md:block mb-8 px-4">
-        <h1 className="text-2xl font-black text-blue-600">MY POS</h1>
+    // Mobile: fixed bottom bar | Desktop: sticky left sidebar that stays while scrolling
+    <nav className="
+      fixed bottom-0 left-0 right-0 z-40 bg-white border-t
+      md:sticky md:top-0 md:h-screen md:w-56 md:shrink-0
+      md:border-t-0 md:border-r md:border-gray-100
+      flex md:flex-col
+      justify-around md:justify-start
+      p-2 md:p-4 md:gap-1
+      print:hidden
+    ">
+      {/* Logo — desktop only */}
+      <div className="hidden md:block mb-6 px-2 pt-2">
+        <h1 className="text-xl font-black text-blue-600 tracking-tight">MY POS</h1>
+        <p className="text-[10px] text-gray-400 font-medium">บุญชอบเครื่องครัว</p>
       </div>
+
       {menuItems.map((item) => (
         <Link 
           key={item.href} 
           href={item.href}
-          className={`flex flex-col md:flex-row items-center gap-3 px-4 py-3 rounded-2xl transition-all ${
-            pathname === item.href ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-3 px-3 py-2 rounded-2xl transition-all text-center md:text-left ${
+            pathname === item.href
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-500 hover:bg-gray-100'
           }`}
         >
           {item.icon}
-          <span className="text-xs md:text-lg font-medium">{item.name}</span>
+          <span className="text-[10px] md:text-sm font-semibold">{item.name}</span>
         </Link>
       ))}
     </nav>

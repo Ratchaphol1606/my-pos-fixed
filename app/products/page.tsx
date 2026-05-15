@@ -24,6 +24,13 @@ export default function ProductPage() {
 
   const categories = ['ทั่วไป','พลาสติก', 'อุปกรณ์ครัว', 'อุปกรณ์ไฟฟ้า', 'เครื่องแต่งกาย', 'กิฟต์ชอป', 'เครื่องมือช่าง','เครื่องนอน']
 
+  // Generate a unique 10-digit internal ID: "INT" + timestamp suffix
+  const generateProductId = () => {
+    const ts = Date.now().toString().slice(-7) // last 7 digits of timestamp
+    const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+    return `INT${ts}${rand}`
+  }
+
   const fetchProducts = async () => {
     const { data } = await supabase.from('products').select('*').order('date_add', { ascending: false })
     if (data) setProducts(data)
@@ -31,21 +38,22 @@ export default function ProductPage() {
 
   useEffect(() => { 
     fetchProducts()
-    idInputRef.current?.focus() // Focus ครั้งแรกตอนเปิดหน้า
+    setForm(f => ({ ...f, id: generateProductId() }))
+    idInputRef.current?.focus()
   }, [])
 
   const margin = form.retailPrice - form.costPrice
   const marginPercent = form.retailPrice > 0 ? (margin / form.retailPrice) * 100 : 0
 
   const resetForm = () => {
-    setForm({ id: '', name: '', category: 'ทั่วไป', costPrice: 0, retailPrice: 0, stock: 0 })
+    setForm({ id: generateProductId(), name: '', category: 'ทั่วไป', costPrice: 0, retailPrice: 0, stock: 0 })
     setIsEditing(false)
-    setTimeout(() => idInputRef.current?.focus(), 100) // รอ UI Render แล้วโฟกัส
+    setTimeout(() => idInputRef.current?.focus(), 100)
   }
 
   const handleSave = async () => {
-    if (!form.id.trim() || !form.name.trim()) {
-      alert("⚠️ กรุณากรอกรหัสและชื่อสินค้าให้ครบถ้วน");
+    if (!form.name.trim()) {
+      alert("⚠️ กรุณากรอกชื่อสินค้าให้ครบถ้วน");
       return;
     }
 
@@ -105,12 +113,27 @@ export default function ProductPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2 block">ID / Barcode</label>
-                <input 
-                  ref={idInputRef}
-                  disabled={isEditing} 
-                  className={`w-full p-4 border rounded-2xl outline-none transition-all font-mono text-lg ${isEditing ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-200 focus:border-blue-500'}`} 
-                  value={form.id} onChange={e => setForm({...form, id: e.target.value})} 
-                />
+                <div className="flex gap-2">
+                  <input 
+                    ref={idInputRef}
+                    disabled={isEditing} 
+                    className={`flex-1 p-4 border rounded-2xl outline-none transition-all font-mono text-sm ${isEditing ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-200 focus:border-blue-500'}`} 
+                    value={form.id} onChange={e => setForm({...form, id: e.target.value})} 
+                  />
+                  {!isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, id: generateProductId() }))}
+                      title="สร้างรหัสใหม่"
+                      className="px-3 py-2 bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-600 rounded-2xl transition-all text-xs font-bold"
+                    >
+                      🔄
+                    </button>
+                  )}
+                </div>
+                {!isEditing && (
+                  <p className="text-[9px] text-slate-400 mt-1 ml-1">สร้างอัตโนมัติ — แก้ไขได้ หรือกด 🔄 เพื่อสร้างใหม่</p>
+                )}
               </div>
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2 block">Category</label>

@@ -43,13 +43,15 @@ export default function POSPage() {
     fetchProducts()
   }, [])
 
-  // Auto-print as soon as receiptDetail is rendered
+  // Auto-print once — watch only shouldPrint to avoid double-fire
   useEffect(() => {
-    if (shouldPrint && receiptDetail) {
+    if (!shouldPrint) return
+    const timer = setTimeout(() => {
       window.print()
       setShouldPrint(false)
-    }
-  }, [shouldPrint, receiptDetail])
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [shouldPrint])
 
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.id === product.id)
@@ -132,50 +134,50 @@ export default function POSPage() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100 p-2 md:p-4 gap-4 overflow-hidden print:bg-white print:p-0">
+    <div className="flex flex-col md:flex-row h-auto md:h-screen bg-gray-100 p-2 md:p-4 gap-4 md:overflow-hidden print:bg-white print:p-0">
       
       {/* ฝั่งซ้าย: ค้นหาและเลือกสินค้า */}
-      <div className="flex-1 flex flex-col gap-4 print:hidden">
+      <div className="flex-1 flex flex-col gap-2 print:hidden min-w-0 overflow-hidden">
         <div className="relative">
-          <Search className="absolute left-4 top-4 text-gray-400" />
+          <Search className="absolute left-3 top-3 text-gray-400" size={18} />
           <input 
-            className="w-full p-4 pl-12 rounded-2xl shadow-sm text-xl outline-none focus:ring-2 ring-blue-500" 
+            className="w-full p-3 pl-10 rounded-xl shadow-sm text-base outline-none focus:ring-2 ring-blue-500" 
             placeholder="ค้นหาหรือยิงบาร์โค้ด..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
-        {/* แท็บหมวดหมู่ (เพิ่มใหม่) */}
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        {/* แท็บหมวดหมู่ */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
           {categories.map(cat => (
             <button 
               key={cat}
               onClick={() => setSelectedCat(cat)}
-              className={`px-6 py-2 rounded-full whitespace-nowrap font-bold text-sm transition-all ${selectedCat === cat ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-500'}`}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap font-bold text-xs transition-all flex-shrink-0 ${selectedCat === cat ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-500'}`}
             >
               {cat}
             </button>
           ))}
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto pb-10">
+        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 overflow-y-auto pb-4">
           {products
             .filter(p => (selectedCat === 'ทั้งหมด' || p.category === selectedCat) && p.name.includes(search))
             .map(p => (
-              <button key={p.id} onClick={() => addToCart(p)} className="bg-white p-4 rounded-2xl shadow-sm hover:bg-blue-50 active:scale-95 transition-all text-left flex flex-col justify-between h-32 border-2 border-transparent hover:border-blue-200">
+              <button key={p.id} onClick={() => addToCart(p)} className="bg-white p-2.5 rounded-xl shadow-sm hover:bg-blue-50 active:scale-95 transition-all text-left flex flex-col justify-between h-24 border-2 border-transparent hover:border-blue-200">
                 <div>
-                  <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-400 uppercase font-bold">{p.category || 'ทั่วไป'}</span>
-                  <p className="font-bold text-gray-700 mt-1 line-clamp-2">{p.name}</p>
+                  <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-400 uppercase font-bold leading-none">{p.category || 'ทั่วไป'}</span>
+                  <p className="font-bold text-gray-700 mt-1 text-xs line-clamp-2 leading-tight">{p.name}</p>
                 </div>
-                <p className="text-blue-600 font-mono text-xl font-bold">฿{p.retail_price}</p>
+                <p className="text-blue-600 font-mono text-sm font-bold">฿{p.retail_price}</p>
               </button>
             ))}
         </div>
       </div>
 
-      {/* ฝั่งขวา: ตะกร้าสินค้า (เหมือนเดิม) */}
-      <div className="w-full md:w-96 bg-white rounded-3xl shadow-xl flex flex-col overflow-hidden print:hidden border border-gray-100">
+      {/* ฝั่งขวา: ตะกร้าสินค้า */}
+      <div className="w-full md:w-72 md:min-w-[288px] bg-white rounded-2xl shadow-xl flex flex-col overflow-hidden print:hidden border border-gray-100">
         <div className="p-6 bg-slate-800 text-white flex justify-between items-center">
           <h2 className="text-xl font-bold flex items-center gap-2"><ShoppingCart /> ตะกร้า</h2>
           <button onClick={() => setCart([])} className="text-gray-400 hover:text-white">ล้าง</button>
@@ -289,10 +291,10 @@ export default function POSPage() {
         </div>
       )}
 
-      {/* ส่วนใบเสร็จ (เหมือนเดิม แต่เพิ่มช่องทางชำระ) */}
+      {/* ส่วนใบเสร็จ */}
       {receiptDetail && (
-        <div className="fixed top-0 left-0 bg-white w-full h-full z-[-1] print:z-[100] print:block hidden">
-          <div className="p-4 text-black text-[11px] font-mono max-w-[58mm] mx-auto">
+        <div className="pos-receipt hidden print:block fixed top-0 left-0 bg-white" style={{width:'48mm'}}>
+          <div className="text-black text-[11px] font-mono w-full px-[3mm] pt-[3mm] pb-[5mm]">
             <div className="text-center mb-4">
               <h2 className="text-sm font-bold uppercase">บุญชอบเครื่องครัว สามแยก</h2>
               <p className="text-[9px]">351/3 ม.5 ต.ท่าบุญมี อ.เกาะจันทร์ จ.ชลบุรี 20240</p>
