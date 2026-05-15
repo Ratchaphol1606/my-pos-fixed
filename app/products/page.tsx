@@ -89,6 +89,19 @@ export default function ProductPage() {
     }
   }
 
+  const handleDelete = async (p: Product) => {
+    if (!confirm(`ต้องการลบ "${p.name}" ออกจากระบบ?`)) return
+    try {
+      // Remove sale_items referencing this product first, then delete product
+      await supabase.from('sale_items').delete().eq('product_id', p.id)
+      const { error } = await supabase.from('products').delete().eq('id', p.id)
+      if (error) throw error
+      fetchProducts()
+    } catch (err: any) {
+      alert('❌ ลบไม่สำเร็จ: ' + err.message)
+    }
+  }
+
   const handleEdit = (p: Product) => {
     setForm({ id: p.id, name: p.name, category: p.category || 'ทั่วไป', costPrice: p.cost_price, retailPrice: p.retail_price, stock: p.stock })
     setIsEditing(true)
@@ -252,7 +265,7 @@ export default function ProductPage() {
                         <Edit3 size={18}/>
                       </button>
                       <button 
-                        onClick={async () => { if(confirm(`ต้องการลบ ${p.name}?`)) { await supabase.from('products').delete().eq('id', p.id); fetchProducts(); } }} 
+                        onClick={() => handleDelete(p)}
                         className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all"
                       >
                         <Trash2 size={18}/>
