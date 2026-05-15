@@ -48,7 +48,7 @@ body {
     position: absolute;
     left: 0;
     top: 0;
-    width: 58mm; /* หรือ 80mm ตามขนาดกระดาษ */
+    width: 48mm; /* หรือ 80mm ตามขนาดกระดาษ */
     display: block !important;
   }
 }
@@ -67,7 +67,7 @@ body {
     position: absolute;
     left: 0;
     top: 0;
-    width: 58mm; /* ปรับตามขนาดเครื่องพิมพ์คุณ */
+    width: 48mm; /* ปรับตามขนาดเครื่องพิมพ์คุณ */
   }
 
   /* เอาขอบขาวของเบราว์เซอร์ออก */
