@@ -312,7 +312,7 @@ export default function POSPage() {
 
       {/* ส่วนใบเสร็จ */}
       {receiptDetail && (
-        <div className="pos-receipt hidden print:block fixed top-0 left-0 bg-white" style={{width:'58mm'}}>
+        <div className="pos-receipt hidden print:block fixed top-0 left-0 bg-white" style={{width:'48mm'}}>
           <div className="text-black text-[11px] font-mono w-full px-[3mm] pt-[3mm] pb-[5mm]">
             <div className="text-center mb-4">
               <h2 className="text-sm font-bold uppercase">บุญชอบเครื่องครัว สามแยก</h2>
