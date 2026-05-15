@@ -43,11 +43,30 @@ export default function POSPage() {
     fetchProducts()
   }, [])
 
-  // Auto-print once — watch only shouldPrint to avoid double-fire
+  // Print via Raspberry Pi print server (falls back to window.print if not configured)
+  const PRINT_SERVER = process.env.NEXT_PUBLIC_PRINT_SERVER_URL
+
   useEffect(() => {
-    if (!shouldPrint) return
-    const timer = setTimeout(() => {
-      window.print()
+    if (!shouldPrint || !receiptDetail) return
+    const timer = setTimeout(async () => {
+      if (PRINT_SERVER) {
+        try {
+          const res = await fetch(`${PRINT_SERVER}/print`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(receiptDetail)
+          })
+          const result = await res.json()
+          if (!result.ok) throw new Error(result.error)
+        } catch (err: any) {
+          console.error('Pi print failed:', err)
+          // fallback to browser print if Pi is unreachable
+          window.print()
+        }
+      } else {
+        // No Pi configured — use browser print
+        window.print()
+      }
       setShouldPrint(false)
     }, 300)
     return () => clearTimeout(timer)
@@ -293,7 +312,7 @@ export default function POSPage() {
 
       {/* ส่วนใบเสร็จ */}
       {receiptDetail && (
-        <div className="pos-receipt hidden print:block fixed top-0 left-0 bg-white" style={{width:'48mm'}}>
+        <div className="pos-receipt hidden print:block fixed top-0 left-0 bg-white" style={{width:'58mm'}}>
           <div className="text-black text-[11px] font-mono w-full px-[3mm] pt-[3mm] pb-[5mm]">
             <div className="text-center mb-4">
               <h2 className="text-sm font-bold uppercase">บุญชอบเครื่องครัว สามแยก</h2>
