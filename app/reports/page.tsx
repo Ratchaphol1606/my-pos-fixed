@@ -6,6 +6,8 @@ import {
   DollarSign, Calendar as CalendarIcon, AlertCircle, ShoppingBag
 } from 'lucide-react'
 
+import { Product, Settings } from '@/src/types'
+
 export default function ReportsPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
@@ -34,7 +36,7 @@ export default function ReportsPage() {
       const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59).toISOString()
       const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000)).toISOString()
 
-      // 1. ดึงข้อมูลจาก sales (ที่มีวันที่) พร้อม sale_items พ่วงมาด้วย
+      // 1. ดึงข้อมูลจาก sales
       const { data: salesData, error: salesError } = await supabase
         .from('sales')
         .select(`
@@ -51,9 +53,9 @@ export default function ReportsPage() {
 
       if (salesError) throw salesError
 
-      // 2. ดึงข้อมูลสินค้ามาเพื่อหาต้นทุน (Cost Price)
+      // 2. ดึงข้อมูลสินค้า
       const { data: products } = await supabase.from('products').select('id, name, cost_price')
-      const productMap = products?.reduce((acc: any, p) => { acc[p.id] = p; return acc }, {}) || {}
+      const productMap = products?.reduce((acc: any, p: Product) => { acc[p.id] = p; return acc }, {}) || {}
 
       if (salesData && salesData.length > 0) {
         

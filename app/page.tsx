@@ -1,22 +1,10 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Search, ShoppingCart, Printer, X, Banknote, QrCode,Tag } from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react' // อย่าลืม npm install qrcode.react
-
-interface Product {
-  id: string;
-  name: string;
-  category: string; // เพิ่มหมวดหมู่
-  cost_price: number;
-  retail_price: number;
-  stock: number;
-  date_add: string;
-}
-
-interface CartItem extends Product {
-  qty: number;
-}
+import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import Receipt from './component/Receipt'
+import { Product, CartItem, ReceiptDetail, Settings } from '@/src/types'
 
 export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([])
@@ -27,23 +15,71 @@ export default function POSPage() {
   const [showPayModal, setShowPayModal] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash')
   const [receivedAmount, setReceivedAmount] = useState<number>(0)
-  const [receiptDetail, setReceiptDetail] = useState<any>(null)
+  const [receiptDetail, setReceiptDetail] = useState<ReceiptDetail | null>(null)
   const [discount, setDiscount] = useState<number>(0)
   const [shouldPrint, setShouldPrint] = useState(false)
+  const [settings, setSettings] = useState<Settings | null>(null)
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const pageSize = 10
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      const { data } = await supabase.from('products').select('*')
-      if (data) {
-        setProducts(data)
-        const cats = ['ทั้งหมด', ...Array.from(new Set(data.map((p: any) => p.category || 'ทั่วไป')))]
+    const fetchInitialData = async () => {
+      // Fetch Categories from products
+      const { data: catData } = await supabase.from('products').select('category')
+      if (catData) {
+        const cats = ['ทั้งหมด', ...Array.from(new Set(catData.map((p: any) => p.category || 'ทั่วไป')))]
         setCategories(cats)
       }
+
+      // Fetch Settings
+      const { data: settsData } = await supabase.from('settings').select('*').eq('id', 1).single()
+      if (settsData) setSettings(settsData)
     }
-    fetchProducts()
+    fetchInitialData()
   }, [])
 
-  // Print via Raspberry Pi print server (falls back to window.print if not configured)
+  useEffect(() => {
+    fetchProducts()
+  }, [currentPage, selectedCat, search])
+
+  const fetchProducts = async () => {
+    let query = supabase.from('products').select('*', { count: 'exact' })
+    
+    if (selectedCat !== 'ทั้งหมด') {
+      query = query.eq('category', selectedCat)
+    }
+    
+    if (search) {
+      query = query.ilike('name', `%${search}%`)
+    }
+    
+    const from = (currentPage - 1) * pageSize
+    const to = from + pageSize - 1
+    
+    const { data, count } = await query
+      .order('name', { ascending: true })
+      .range(from, to)
+      
+    if (data) setProducts(data)
+    if (count !== null) setTotalCount(count)
+  }
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value)
+    setCurrentPage(1)
+  }
+
+  const handleCategoryChange = (cat: string) => {
+    setSelectedCat(cat)
+    setCurrentPage(1)
+  }
+
+  const totalPages = Math.ceil(totalCount / pageSize)
+
+  // Print via Raspberry Pi print server
   const PRINT_SERVER = process.env.NEXT_PUBLIC_PRINT_SERVER_URL
 
   useEffect(() => {
@@ -60,25 +96,37 @@ export default function POSPage() {
           if (!result.ok) throw new Error(result.error)
         } catch (err: any) {
           console.error('Pi print failed:', err)
-          // fallback to browser print if Pi is unreachable
           window.print()
         }
       } else {
-        // No Pi configured — use browser print
         window.print()
       }
       setShouldPrint(false)
     }, 300)
     return () => clearTimeout(timer)
-  }, [shouldPrint])
+  }, [shouldPrint, receiptDetail, PRINT_SERVER])
 
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.id === product.id)
     if (existing) {
-      setCart(cart.map(item => item.id === product.id ? {...item, qty: item.qty + 1} : item))
+      setCart(cart.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item))
     } else {
-      setCart([...cart, {...product, qty: 1}])
+      setCart([...cart, { ...product, qty: 1 }])
     }
+  }
+
+  const updateCartQty = (id: string, delta: number) => {
+    setCart(cart.map(item => {
+      if (item.id === id) {
+        const newQty = item.qty + delta
+        return newQty > 0 ? { ...item, qty: newQty } : item
+      }
+      return item
+    }))
+  }
+
+  const removeFromCart = (id: string) => {
+    setCart(cart.filter(item => item.id !== id))
   }
 
   const generateReceiptNo = async () => {
@@ -90,13 +138,13 @@ export default function POSPage() {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + (item.retail_price * item.qty), 0)
-  const total = Math.max(0, subtotal - discount) // ยอดรวมสุทธิ (ไม่ให้ติดลบ)
+  const total = Math.max(0, subtotal - discount)
   const change = paymentMethod === 'cash' ? receivedAmount - total : 0
 
   const handleFinish = async () => {
     try {
       const currentReceiptNo = await generateReceiptNo();
-      const snapshot = {
+      const snapshot: ReceiptDetail = {
         items: cart.map(item => ({
           name: item.name,
           price: item.retail_price,
@@ -108,7 +156,7 @@ export default function POSPage() {
         total,
         received: paymentMethod === 'cash' ? receivedAmount : total,
         change,
-        paymentMethod: paymentMethod === 'cash' ? 'เงินสด' : 'โอนเงิน/QR', // เก็บลง snapshot
+        paymentMethod: paymentMethod === 'cash' ? 'เงินสด' : 'โอนเงิน/QR',
         date: new Date().toLocaleString('th-TH'),
         receiptNo: currentReceiptNo
       };
@@ -120,7 +168,7 @@ export default function POSPage() {
           total_amount: total,
           received_amount: snapshot.received,
           change_amount: snapshot.change,
-          payment_method: paymentMethod, // อย่าลืมเพิ่มคอลัมน์นี้ใน DB
+          payment_method: paymentMethod,
           receipt_snapshot: snapshot,
           discount_amount: discount
         }])
@@ -128,7 +176,6 @@ export default function POSPage() {
 
       if (saleError) throw saleError;
 
-      // บันทึกรายละเอียดสินค้าและตัดสต็อก (โค้ดส่วนนี้เหมือนเดิมของคุณ)
       const saleItems = cart.map(item => ({
         sale_id: saleData.id,
         product_id: item.id,
@@ -172,7 +219,7 @@ export default function POSPage() {
           {categories.map(cat => (
             <button 
               key={cat}
-              onClick={() => setSelectedCat(cat)}
+              onClick={() => handleCategoryChange(cat)}
               className={`px-3 py-1.5 rounded-full whitespace-nowrap font-bold text-xs transition-all flex-shrink-0 ${selectedCat === cat ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-500'}`}
             >
               {cat}
@@ -180,18 +227,44 @@ export default function POSPage() {
           ))}
         </div>
 
-        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 overflow-y-auto pb-4">
-          {products
-            .filter(p => (selectedCat === 'ทั้งหมด' || p.category === selectedCat) && p.name.includes(search))
-            .map(p => (
+        <div className="flex-1 overflow-y-auto pb-4">
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            {products.map(p => (
               <button key={p.id} onClick={() => addToCart(p)} className="bg-white p-2.5 rounded-xl shadow-sm hover:bg-blue-50 active:scale-95 transition-all text-left flex flex-col justify-between h-24 border-2 border-transparent hover:border-blue-200">
                 <div>
-                  <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-400 uppercase font-bold leading-none">{p.category || 'ทั่วไป'}</span>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-400 uppercase font-bold leading-none">{p.category || 'ทั่วไป'}</span>
+                    {p.stock <= (settings?.low_stock_threshold || 5) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                  </div>
                   <p className="font-bold text-gray-700 mt-1 text-xs line-clamp-2 leading-tight">{p.name}</p>
                 </div>
                 <p className="text-blue-600 font-mono text-sm font-bold">฿{p.retail_price}</p>
               </button>
             ))}
+          </div>
+          
+          {/* Pagination Controls */}
+          <div className="mt-4 flex justify-between items-center bg-white p-3 rounded-2xl shadow-sm">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              หน้า {currentPage} / {totalPages || 1}
+            </div>
+            <div className="flex gap-2">
+              <button 
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+                className="px-3 py-1 bg-slate-100 rounded-lg text-xs font-bold disabled:opacity-30 hover:bg-blue-100 transition-colors"
+              >
+                ก่อนหน้า
+              </button>
+              <button 
+                disabled={currentPage === totalPages || totalPages === 0}
+                onClick={() => setCurrentPage(p => p + 1)}
+                className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold disabled:opacity-30 hover:bg-blue-700 transition-colors"
+              >
+                ถัดไป
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -203,14 +276,36 @@ export default function POSPage() {
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {cart.map(item => (
-            <div key={item.id} className="flex justify-between items-center border-b border-gray-50 pb-2">
+            <div key={item.id} className="flex justify-between items-center border-b border-gray-50 pb-3 group relative">
               <div className="flex-1 pr-2">
-                <p className="font-medium text-sm text-gray-800">{item.name}</p>
-                <p className="text-xs text-gray-400">฿{item.retail_price} x {item.qty}</p>
+                <p className="font-medium text-sm text-gray-800 line-clamp-1">{item.name}</p>
+                <div className="flex items-center gap-3 mt-1">
+                  <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+                    <button onClick={() => updateCartQty(item.id, -1)} className="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 text-xs font-bold border-r">-</button>
+                    <span className="px-3 py-0.5 text-xs font-mono font-bold bg-white">{item.qty}</span>
+                    <button onClick={() => updateCartQty(item.id, 1)} className="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 text-xs font-bold border-l">+</button>
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-mono">฿{item.retail_price.toLocaleString()}</span>
+                </div>
               </div>
-              <p className="font-bold text-gray-900">฿{item.retail_price * item.qty}</p>
+              <div className="flex flex-col items-end gap-1">
+                <p className="font-bold text-gray-900 text-sm">฿{(item.retail_price * item.qty).toLocaleString()}</p>
+                <button 
+                  onClick={() => removeFromCart(item.id)}
+                  className="p-1 text-red-300 hover:text-red-500 transition-colors"
+                  title="ลบรายการนี้"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
           ))}
+          {cart.length === 0 && (
+            <div className="h-full flex flex-col items-center justify-center text-gray-300 py-20">
+              <ShoppingCart size={48} className="opacity-20 mb-2" />
+              <p className="text-sm font-bold uppercase tracking-widest opacity-50">ว่างเปล่า</p>
+            </div>
+          )}
         </div>
         <div className="p-6 border-t bg-gray-50">
           <div className="flex justify-between text-gray-500 font-bold">
@@ -249,13 +344,12 @@ export default function POSPage() {
         </div>
       </div>
 
-      {/* Popup ชำระเงิน (ปรับปรุงให้เลือกช่องทางได้) */}
+      {/* Popup ชำระเงิน */}
       {showPayModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl">
             <h2 className="text-4xl font-black mb-6 text-center italic tracking-tighter">฿{total.toLocaleString()}</h2>
             
-            {/* เลือกช่องทางชำระเงิน */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <button 
                 onClick={() => setPaymentMethod('cash')}
@@ -291,8 +385,15 @@ export default function POSPage() {
               </div>
             ) : (
               <div className="flex flex-col items-center p-6 bg-gray-50 rounded-3xl mb-6 animate-in zoom-in duration-300">
-                <QRCodeSVG value={`https://promptpay.io/0659834959/${total}.png`} size={180} />
-                <p className="mt-4 font-bold text-blue-600">สแกนเพื่อชำระเงิน</p>
+                {settings?.qr_code_url ? (
+                  <div className="relative w-48 h-48">
+                    <img src={settings.qr_code_url} alt="Shop QR" className="w-full h-full object-contain" />
+                    <div className="absolute inset-0 border-4 border-blue-500/20 rounded-xl"></div>
+                  </div>
+                ) : (
+                  <QRCodeSVG value={`https://promptpay.io/${settings?.promptpay_id || '0000000000'}/${total}.png`} size={180} />
+                )}
+                <p className="mt-4 font-bold text-blue-600 uppercase tracking-widest text-sm">สแกนเพื่อชำระเงิน</p>
               </div>
             )}
 
@@ -312,76 +413,8 @@ export default function POSPage() {
 
       {/* ส่วนใบเสร็จ */}
       {receiptDetail && (
-        <div className="pos-receipt hidden print:block fixed top-0 left-0 bg-white" style={{width:'48mm'}}>
-          <div className="text-black text-[11px] font-mono w-full px-[3mm] pt-[3mm] pb-[5mm]">
-            <div className="text-center mb-4">
-              <h2 className="text-sm font-bold uppercase">บุญชอบเครื่องครัว สามแยก</h2>
-              <p className="text-[9px]">351/3 ม.5 ต.ท่าบุญมี อ.เกาะจันทร์ จ.ชลบุรี 20240</p>
-              <p className="text-[9px]">โทร : 065-983-4959</p>
-            </div>
-            
-            <div className="border-b border-dashed mb-2 pb-2">
-              <p>เลขที่: {receiptDetail.receiptNo}</p>
-              <p>วันที่: {receiptDetail.date}</p>
-            </div>
-
-            <div className="mb-2">
-            {receiptDetail.items?.map((item: any, index: number) => (
-             <div key={index} className="mb-2 text-[11px] uppercase border-b border-gray-50 pb-1">
-                <div className="font-bold text-gray-800 mb-0.5">
-                  {item.name}
-                </div>
-                <div className="flex justify-between items-end text-gray-600">
-                  <div className="pl-2 italic">
-                    {/* แสดงราคาปลีก x จำนวน */}
-                    {Number(item.price).toLocaleString()} x {item.qty}
-                  </div>
-                  <div className="font-bold text-black">
-                    {/* ราคารวมของสินค้านั้น */}
-                    {(item.price * item.qty).toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-            <div className="border-t border-dashed pt-2 space-y-1">
-              <div className="flex justify-between">
-                <span>ยอดรวม:</span>
-                <span>{receiptDetail.subtotal?.toLocaleString()}</span>
-              </div>
-              
-              {/* ✅ แสดงส่วนลดในใบเสร็จ */}
-              {receiptDetail.discount > 0 && (
-                <div className="flex justify-between text-black font-bold">
-                  <span>ส่วนลด:</span>
-                  <span>-{receiptDetail.discount?.toLocaleString()}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between font-bold text-sm border-t border-black pt-1">
-                <span>สุทธิ:</span>
-                <span>฿{receiptDetail.total?.toLocaleString()}</span>
-              </div>
-
-              <div className="flex justify-between pt-1">
-                <span>รับเงิน ({receiptDetail.paymentMethod}):</span>
-                <span>{receiptDetail.received?.toLocaleString()}</span>
-              </div>
-              
-              {receiptDetail.paymentMethod === 'เงินสด' && (
-                <div className="flex justify-between font-bold">
-                  <span>เงินทอน:</span>
-                  <span>{receiptDetail.change?.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="text-center mt-6 text-[9px] border-t border-dashed pt-4">
-              <p>ชำระด้วย: {receiptDetail.paymentMethod}</p>
-              <p className="mt-2">*** ขอบคุณที่ใช้บริการ ***</p>
-            </div>
-          </div>
+        <div className="hidden print:block fixed top-0 left-0 bg-white">
+          <Receipt detail={receiptDetail} settings={settings} />
         </div>
       )}
     </div>

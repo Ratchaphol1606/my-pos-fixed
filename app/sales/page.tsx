@@ -2,28 +2,26 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
 import { Calendar, Search, FileText, Printer, TrendingUp, DollarSign } from 'lucide-react'
-
-// ปรับ Interface ให้ตรงกับ Database
-interface Sale {
-  id: string;
-  receipt_no: string; // เปลี่ยนเป็น string เพราะเราใช้ INV...
-  total_amount: number;
-  received_amount: number;
-  change_amount: number;
-  created_at: string;
-  receipt_snapshot?: any; // เพิ่มฟิลด์ snapshot
-}
+import Receipt from '../component/Receipt'
+import { Sale, ReceiptDetail, Settings } from '@/src/types'
 
 export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([])
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   const [searchTerm, setSearchTerm] = useState('')
-  const [receiptDetail, setReceiptDetail] = useState<any>(null);
+  const [receiptDetail, setReceiptDetail] = useState<ReceiptDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [settings, setSettings] = useState<Settings | null>(null)
 
   useEffect(() => {
     fetchSales()
+    fetchSettings()
   }, [selectedDate])
+
+  const fetchSettings = async () => {
+    const { data } = await supabase.from('settings').select('*').eq('id', 1).single()
+    if (data) setSettings(data)
+  }
 
   const fetchSales = async () => {
     const { data } = await supabase
@@ -36,11 +34,9 @@ export default function SalesPage() {
     if (data) setSales(data)
   }
 
-  // --- ฟังก์ชันดึงข้อมูลจาก Snapshot (ไม่ต้องโหลด sale_items ใหม่) ---
   const handleLoadReceipt = (sale: Sale, autoPrint: boolean = false) => {
     setIsLoading(true);
 
-    // ถ้ามี snapshot ให้ใช้จาก snapshot เลย
     if (sale.receipt_snapshot) {
       setReceiptDetail(sale.receipt_snapshot);
       
@@ -53,7 +49,6 @@ export default function SalesPage() {
         setIsLoading(false);
       }
     } else {
-      // กรณีบิลเก่าที่ไม่มี snapshot (Optional: คุณอาจจะใส่ logic ดึงจาก sale_items ไว้ตรงนี้)
       setIsLoading(false);
       alert("บิลนี้ไม่มีข้อมูล Snapshot ย้อนหลัง");
     }
@@ -143,74 +138,8 @@ export default function SalesPage() {
       {/* --- ส่วนใบเสร็จจาก Snapshot --- */}
       {receiptDetail && (
         <div className="fixed top-0 left-0 bg-white w-full h-full z-[-1] print:z-[100] print:block hidden">
-          <div className="p-4 text-black text-[11px] font-mono max-w-[58mm] mx-auto">
-            <div className="text-center mb-4">
-              <h2 className="text-sm font-bold uppercase">บุญชอบเครื่องครัว สามแยก</h2>
-              <p className="text-[9px]">351/3 ม.5 ต.ท่าบุญมี อ.เกาะจันทร์ จ.ชลบุรี 20240</p>
-              <p className="text-[9px]">โทร : 065-983-4959</p>
-            </div>
-            
-            <div className="border-b border-dashed mb-2 pb-2">
-              <p>เลขที่: {receiptDetail.receiptNo}</p>
-              <p>วันที่: {receiptDetail.date}</p>
-            </div>
-
-            <div className="mb-2">
-            {receiptDetail.items?.map((item: any, index: number) => (
-             <div key={index} className="mb-2 text-[11px] uppercase border-b border-gray-50 pb-1">
-                <div className="font-bold text-gray-800 mb-0.5">
-                  {item.name}
-                </div>
-                <div className="flex justify-between items-end text-gray-600">
-                  <div className="pl-2 italic">
-                    {/* แสดงราคาปลีก x จำนวน */}
-                    {Number(item.price).toLocaleString()} x {item.qty}
-                  </div>
-                  <div className="font-bold text-black">
-                    {/* ราคารวมของสินค้านั้น */}
-                    {(item.price * item.qty).toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-            <div className="border-t border-dashed pt-2 space-y-1">
-              <div className="flex justify-between">
-                <span>ยอดรวม:</span>
-                <span>{receiptDetail.subtotal?.toLocaleString()}</span>
-              </div>
-              
-              {/* ✅ แสดงส่วนลดในใบเสร็จ */}
-              {receiptDetail.discount > 0 && (
-                <div className="flex justify-between text-black font-bold">
-                  <span>ส่วนลด:</span>
-                  <span>-{receiptDetail.discount?.toLocaleString()}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between font-bold text-sm border-t border-black pt-1">
-                <span>สุทธิ:</span>
-                <span>฿{receiptDetail.total?.toLocaleString()}</span>
-              </div>
-
-              <div className="flex justify-between pt-1">
-                <span>รับเงิน ({receiptDetail.paymentMethod}):</span>
-                <span>{receiptDetail.received?.toLocaleString()}</span>
-              </div>
-              
-              {receiptDetail.paymentMethod === 'เงินสด' && (
-                <div className="flex justify-between font-bold">
-                  <span>เงินทอน:</span>
-                  <span>{receiptDetail.change?.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="text-center mt-6 text-[9px] border-t border-dashed pt-4">
-              <p>ชำระด้วย: {receiptDetail.paymentMethod}</p>
-              <p className="mt-2">*** ขอบคุณที่ใช้บริการ ***</p>
-            </div>
+          <div className="receipt-container mx-auto">
+            <Receipt detail={receiptDetail} settings={settings} />
           </div>
         </div>
       )}

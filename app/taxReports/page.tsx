@@ -1,11 +1,12 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import * as XLSX from 'xlsx' // ✅ ต้องรัน: npm install xlsx
+import * as XLSX from 'xlsx'
 import { 
   TrendingUp, Trophy, DollarSign, AlertCircle, 
   FileSpreadsheet, Calendar as CalendarIcon, Filter, Banknote, CreditCard
 } from 'lucide-react'
+import { Product } from '@/src/types'
 
 export default function ReportsPage() {
   // เริ่มต้นที่วันที่ 1 ของเดือนปัจจุบัน ถึง วันนี้
@@ -44,7 +45,7 @@ export default function ReportsPage() {
 
       // 2. ดึงข้อมูลสินค้าเพื่อหาต้นทุน
       const { data: products } = await supabase.from('products').select('id, name, cost_price, category')
-      const productMap = products?.reduce((acc: any, p) => { acc[p.id] = p; return acc }, {}) || {}
+      const productMap = products?.reduce((acc: any, p: Product) => { acc[p.id] = p; return acc }, {}) || {}
 
       if (salesData) {
         setRawSales(salesData)

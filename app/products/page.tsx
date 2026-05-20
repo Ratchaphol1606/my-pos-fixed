@@ -2,45 +2,73 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/src/lib/supabase'
 import { Trash2, Edit3, Plus, Search, AlertCircle, X, Save, Tag, Barcode } from 'lucide-react'
-
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  cost_price: number;
-  retail_price: number;
-  stock: number;
-  date_add: string;
-}
+import { Product, Settings } from '@/src/types'
 
 export default function ProductPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  const [settings, setSettings] = useState<Settings | null>(null)
   const [form, setForm] = useState({ id: '', name: '', category: 'ทั่วไป', costPrice: 0, retailPrice: 0, stock: 0 })
   
-  const idInputRef = useRef<HTMLInputElement>(null) // สำหรับ Auto Focus
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const pageSize = 10
+
+  const idInputRef = useRef<HTMLInputElement>(null)
 
   const categories = ['ทั่วไป','พลาสติก', 'อุปกรณ์ครัว', 'อุปกรณ์ไฟฟ้า', 'เครื่องแต่งกาย', 'กิฟต์ชอป', 'เครื่องมือช่าง','เครื่องนอน']
 
-  // Generate a unique 10-digit internal ID: "INT" + timestamp suffix
-  const generateProductId = () => {
-    const ts = Date.now().toString().slice(-7) // last 7 digits of timestamp
-    const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
-    return `INT${ts}${rand}`
+  const fetchInitialData = async () => {
+    // Settings
+    const { data: settsData } = await supabase.from('settings').select('*').eq('id', 1).single()
+    if (settsData) setSettings(settsData)
   }
 
   const fetchProducts = async () => {
-    const { data } = await supabase.from('products').select('*').order('date_add', { ascending: false })
+    setLoading(true)
+    let query = supabase.from('products').select('*', { count: 'exact' })
+    
+    if (search) {
+      query = query.ilike('name', `%${search}%`)
+    }
+    
+    const from = (currentPage - 1) * pageSize
+    const to = from + pageSize - 1
+    
+    const { data, count } = await query
+      .order('date_add', { ascending: false })
+      .range(from, to)
+      
     if (data) setProducts(data)
+    if (count !== null) setTotalCount(count)
+    setLoading(false)
   }
 
   useEffect(() => { 
-    fetchProducts()
+    fetchInitialData()
     setForm(f => ({ ...f, id: generateProductId() }))
     idInputRef.current?.focus()
   }, [])
+
+  useEffect(() => {
+    fetchProducts()
+  }, [currentPage, search])
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value)
+    setCurrentPage(1)
+  }
+
+  const totalPages = Math.ceil(totalCount / pageSize)
+
+  const generateProductId = () => {
+    const ts = Date.now().toString().slice(-7)
+    const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+    return `INT${ts}${rand}`
+  }
 
   const margin = form.retailPrice - form.costPrice
   const marginPercent = form.retailPrice > 0 ? (margin / form.retailPrice) * 100 : 0
@@ -92,7 +120,6 @@ export default function ProductPage() {
   const handleDelete = async (p: Product) => {
     if (!confirm(`ต้องการลบ "${p.name}" ออกจากระบบ?`)) return
     try {
-      // Remove sale_items referencing this product first, then delete product
       await supabase.from('sale_items').delete().eq('product_id', p.id)
       const { error } = await supabase.from('products').delete().eq('id', p.id)
       if (error) throw error
@@ -144,9 +171,6 @@ export default function ProductPage() {
                     </button>
                   )}
                 </div>
-                {!isEditing && (
-                  <p className="text-[9px] text-slate-400 mt-1 ml-1">สร้างอัตโนมัติ — แก้ไขได้ หรือกด 🔄 เพื่อสร้างใหม่</p>
-                )}
               </div>
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2 block">Category</label>
@@ -225,8 +249,11 @@ export default function ProductPage() {
               <input 
                 placeholder="ค้นหารหัสหรือชื่อสินค้า..." 
                 className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 focus:border-blue-500 rounded-2xl outline-none transition-all"
-                value={search} onChange={e => setSearch(e.target.value)} 
+                value={search} onChange={handleSearchChange} 
               />
+            </div>
+            <div className="text-xs font-bold text-slate-400">
+              หน้า {currentPage} จาก {totalPages || 1} ({totalCount} รายการ)
             </div>
           </div>
 
@@ -242,7 +269,7 @@ export default function ProductPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {products.filter(p => p.name.includes(search) || p.id.includes(search)).map(p => (
+                {products.map(p => (
                   <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="p-6 font-mono text-sm text-slate-400">{p.id}</td>
                     <td className="p-6">
@@ -256,7 +283,7 @@ export default function ProductPage() {
                       </div>
                     </td>
                     <td className="p-6 text-center">
-                      <div className={`inline-block px-4 py-1.5 rounded-xl font-black text-xs ${p.stock <= 5 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
+                      <div className={`inline-block px-4 py-1.5 rounded-xl font-black text-xs ${p.stock <= (settings?.low_stock_threshold || 5) ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
                         {p.stock} <span className="text-[10px] opacity-60">PCS</span>
                       </div>
                     </td>
@@ -275,6 +302,35 @@ export default function ProductPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="p-6 bg-slate-50/30 border-t border-slate-50 flex justify-center gap-2">
+            <button 
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => p - 1)}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold disabled:opacity-50 hover:bg-blue-50 transition-colors"
+            >
+              ย้อนกลับ
+            </button>
+            <div className="flex gap-1">
+              {[...Array(totalPages)].map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i + 1)}
+                  className={`w-8 h-8 rounded-xl text-xs font-bold transition-colors ${currentPage === i + 1 ? 'bg-blue-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-400 hover:bg-blue-50'}`}
+                >
+                  {i + 1}
+                </button>
+              )).slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))}
+            </div>
+            <button 
+              disabled={currentPage === totalPages || totalPages === 0}
+              onClick={() => setCurrentPage(p => p + 1)}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold disabled:opacity-50 hover:bg-blue-50 transition-colors"
+            >
+              ถัดไป
+            </button>
           </div>
         </div>
       </div>

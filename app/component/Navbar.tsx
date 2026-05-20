@@ -1,7 +1,7 @@
 "use client"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon } from 'lucide-react'
+import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings } from 'lucide-react'
 
 export default function Navbar() {
   const pathname = usePathname()
@@ -12,6 +12,7 @@ export default function Navbar() {
     { name: 'ยอดขาย', href: '/sales', icon: <DollarSign size={20} /> },
     { name: 'รายงานสรุป', href: '/reports', icon: <BarChart3 size={20} /> },
     { name: 'ภาษี', href: '/taxReports', icon: <DollarSignIcon size={20} /> },
+    { name: 'ตั้งค่า', href: '/settings', icon: <Settings size={20} /> },
   ]
 
   return (
