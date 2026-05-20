@@ -55,7 +55,7 @@ export default function ReportsPage() {
 
       // 2. ดึงข้อมูลสินค้า
       const { data: products } = await supabase.from('products').select('id, name, cost_price')
-      const productMap = products?.reduce((acc: any, p: Product) => { acc[p.id] = p; return acc }, {}) || {}
+      const productMap = products?.reduce((acc: any, p) => { acc[p.id] = p; return acc }, {}) || {}
 
       if (salesData && salesData.length > 0) {
         
