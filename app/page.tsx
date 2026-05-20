@@ -90,7 +90,12 @@ export default function POSPage() {
           const res = await fetch(`${PRINT_SERVER}/print`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(receiptDetail)
+            body: JSON.stringify({
+              ...receiptDetail,
+              shopName: settings?.shop_name || '',
+              shopAddress: settings?.shop_address || '',
+              shopPhone: settings?.shop_phone || ''
+            })
           })
           const result = await res.json()
           if (!result.ok) throw new Error(result.error)
