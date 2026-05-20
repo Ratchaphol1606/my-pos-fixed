@@ -45,7 +45,7 @@ export default function ReportsPage() {
 
       // 2. ดึงข้อมูลสินค้าเพื่อหาต้นทุน
       const { data: products } = await supabase.from('products').select('id, name, cost_price, category')
-      const productMap = products?.reduce((acc: any, p: Product) => { acc[p.id] = p; return acc }, {}) || {}
+      const productMap = products?.reduce((acc: any, p) => { acc[p.id] = p; return acc }, {}) || {}
 
       if (salesData) {
         setRawSales(salesData)
