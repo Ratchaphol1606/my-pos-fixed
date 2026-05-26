@@ -210,7 +210,7 @@ export default function POSPage() {
       {/* ฝั่งซ้าย: ค้นหาและเลือกสินค้า */}
       <div className="flex-1 flex flex-col gap-2 print:hidden min-w-0 overflow-hidden">
         <div className="relative">
-          <Search className="absolute left-3 top-3 text-gray-400" size={18} />
+          <Search className="absolute left-3 top-3 text-black-400" size={18} />
           <input 
             className="w-full p-3 pl-10 rounded-xl shadow-sm text-base outline-none focus:ring-2 ring-blue-500" 
             placeholder="ค้นหาหรือยิงบาร์โค้ด..."
@@ -335,7 +335,7 @@ export default function POSPage() {
             </div>
           </div>
 
-          <div className="flex justify-between text-3xl font-black italic pt-2">
+          <div className="flex justify-between text-3xl font-black italic pt-2 text-black-100">
             <span>สุทธิ</span>
             <span className="text-blue-600">฿{total.toLocaleString()}</span>
           </div>

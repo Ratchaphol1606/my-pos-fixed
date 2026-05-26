@@ -75,7 +75,7 @@ export default function SalesPage() {
   return (
     <div className="p-4 md:p-8 bg-slate-50 min-h-screen">
       <h1 className="text-3xl font-bold mb-6 flex items-center gap-2">
-        <TrendingUp className="text-green-600" /> สรุปยอดขาย
+        <TrendingUp className="font-black text-green-600" /> สรุปยอดขาย
       </h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -93,7 +93,7 @@ export default function SalesPage() {
         <input
           type="text"
           placeholder="ค้นหาเลขใบเสร็จ..."
-          className="flex-1 p-4 rounded-2xl border-none shadow-sm"
+          className="flex-1 p-4 rounded-2xl border-none shadow-sm text-black"
           onChange={(e) => setSearchTerm(e.target.value)}
         />
         <input
@@ -118,7 +118,7 @@ export default function SalesPage() {
               .filter(s => s.receipt_no.toString().includes(searchTerm))
               .map((sale) => (
                 <tr key={sale.id} className="border-b hover:bg-slate-50">
-                  <td className="p-5 font-bold">{sale.receipt_no}</td>
+                  <td className="p-5 font-bold text black-80">{sale.receipt_no}</td>
                   <td className="p-5 text-right font-bold text-xl text-blue-600">
                     ฿{sale.total_amount.toLocaleString()}
                   </td>

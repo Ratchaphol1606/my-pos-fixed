@@ -96,7 +96,7 @@ export default function SettingsPage() {
       <div className="max-w-4xl mx-auto">
         <header className="mb-8">
           <h1 className="text-4xl font-black italic tracking-tighter uppercase flex items-center gap-3">
-            <Settings className="text-blue-600" size={40} /> System Settings
+            <Settings className="text-blue-500" size={40} /> System Settings
           </h1>
           <p className="text-slate-500 font-medium">ตั้งค่าข้อมูลร้านค้าและระบบ POS</p>
         </header>
@@ -105,13 +105,13 @@ export default function SettingsPage() {
           {/* ข้อมูลร้าน */}
           <div className="md:col-span-2 space-y-6">
             <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-              <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Store size={20} className="text-blue-500"/> ข้อมูลร้านค้า</h2>
+              <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Store size={20} className="text-black"/> ข้อมูลร้านค้า</h2>
               
               <div className="space-y-4">
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">ชื่อร้าน</label>
                   <input 
-                    className="w-full p-4 border border-slate-200 rounded-2xl outline-none focus:border-blue-500"
+                    className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
                     value={settings.shop_name} 
                     onChange={e => setSettings({...settings, shop_name: e.target.value})} 
                   />
@@ -120,7 +120,7 @@ export default function SettingsPage() {
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">ที่อยู่</label>
                   <textarea 
-                    className="w-full p-4 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 min-h-[100px]"
+                    className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500 min-h-[100px]"
                     value={settings.shop_address} 
                     onChange={e => setSettings({...settings, shop_address: e.target.value})} 
                   />
@@ -130,7 +130,7 @@ export default function SettingsPage() {
                   <div>
                     <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block"><Phone size={12} className="inline mr-1"/> เบอร์โทรศัพท์</label>
                     <input 
-                      className="w-full p-4 border border-slate-200 rounded-2xl outline-none focus:border-blue-500"
+                      className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
                       value={settings.shop_phone} 
                       onChange={e => setSettings({...settings, shop_phone: e.target.value})} 
                     />
@@ -138,7 +138,7 @@ export default function SettingsPage() {
                   <div>
                     <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block"><CreditCard size={12} className="inline mr-1"/> PromptPay ID</label>
                     <input 
-                      className="w-full p-4 border border-slate-200 rounded-2xl outline-none focus:border-blue-500"
+                      className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
                       value={settings.promptpay_id} 
                       onChange={e => setSettings({...settings, promptpay_id: e.target.value})} 
                     />
@@ -148,12 +148,12 @@ export default function SettingsPage() {
             </div>
 
             <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-              <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><AlertTriangle size={20} className="text-amber-500"/> ระบบสต็อก</h2>
+              <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><AlertTriangle size={20} className="text-black"/> ระบบสต็อก</h2>
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">แจ้งเตือนสต็อกต่ำเมื่อเหลือน้อยกว่า (ชิ้น)</label>
                 <input 
                   type="number"
-                  className="w-full p-4 border border-slate-200 rounded-2xl outline-none focus:border-blue-500"
+                  className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
                   value={settings.low_stock_threshold} 
                   onChange={e => setSettings({...settings, low_stock_threshold: Number(e.target.value)})} 
                 />
@@ -164,7 +164,7 @@ export default function SettingsPage() {
           {/* อัปโหลด QR Code */}
           <div className="space-y-6">
             <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col items-center">
-              <h2 className="text-xl font-bold mb-6 w-full text-center">QR Code รับเงิน</h2>
+              <h2 className="text-xl font-bold mb-6 w-full text-center text-black">QR Code รับเงิน</h2>
               
               <div className="w-full aspect-square bg-slate-100 rounded-3xl mb-4 overflow-hidden border-2 border-dashed border-slate-200 flex items-center justify-center relative group">
                 {previewUrl ? (
