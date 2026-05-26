@@ -212,7 +212,7 @@ export default function POSPage() {
         <div className="relative">
           <Search className="absolute left-3 top-3 text-black-400" size={18} />
           <input 
-            className="w-full p-3 pl-10 rounded-xl shadow-sm text-base outline-none focus:ring-2 ring-blue-500" 
+            className="w-full p-3 pl-10 rounded-xl shadow-sm text-base text-black outline-none focus:ring-2 ring-blue-500" 
             placeholder="ค้นหาหรือยิงบาร์โค้ด..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
