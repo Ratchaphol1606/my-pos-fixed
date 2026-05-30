@@ -13,17 +13,35 @@ export default function POSPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [search, setSearch] = useState('')
   const [showPayModal, setShowPayModal] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash')
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'wallet'>('cash')
   const [receivedAmount, setReceivedAmount] = useState<number>(0)
   const [receiptDetail, setReceiptDetail] = useState<ReceiptDetail | null>(null)
   const [discount, setDiscount] = useState<number>(0)
   const [shouldPrint, setShouldPrint] = useState(false)
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [dailySubsidyUsed, setDailySubsidyUsed] = useState<number>(0)
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const pageSize = 10
+  // เป๋าตัง Co-payment Constants
+  const GOVERNMENT_SHARE_RATE = 0.60
+  const USER_SHARE_RATE = 0.40
+  const MAX_GOVERNMENT_DAILY_CAP = 200.00
+
+  function calculatePaoTang(totalPrice: number, dailySubsidyAlreadyUsed: number = 0) {
+    const rawGovShare = totalPrice * GOVERNMENT_SHARE_RATE
+    const availableCap = MAX_GOVERNMENT_DAILY_CAP - dailySubsidyAlreadyUsed
+    const actualGovShare = Math.min(rawGovShare, availableCap)
+    const actualUserShare = totalPrice - actualGovShare
+    return {
+      govShare: Math.max(0, actualGovShare),
+      userShare: Math.max(0, actualUserShare),
+      isCapped: rawGovShare > availableCap
+    }
+  }
+
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -161,7 +179,9 @@ export default function POSPage() {
         total,
         received: paymentMethod === 'cash' ? receivedAmount : total,
         change,
-        paymentMethod: paymentMethod === 'cash' ? 'เงินสด' : 'โอนเงิน/QR',
+        paymentMethod: paymentMethod === 'cash' ? 'เงินสด' 
+       : paymentMethod === 'transfer' ? 'โอนเงิน/QR' 
+        : 'เป๋าตัง'  ,
         date: new Date().toLocaleString('th-TH'),
         receiptNo: currentReceiptNo
       };
@@ -203,6 +223,7 @@ export default function POSPage() {
       alert("เกิดข้อผิดพลาด: " + error.message)
     }
   }
+  
 
   return (
     <div className="flex flex-col md:flex-row h-auto md:h-screen bg-gray-100 p-2 md:p-4 gap-4 md:overflow-hidden print:bg-white print:p-0">
@@ -370,6 +391,13 @@ export default function POSPage() {
                 <QrCode size={32} />
                 <span className="font-bold">โอนเงิน/QR</span>
               </button>
+              <button 
+                onClick={() => setPaymentMethod('wallet')}
+                className={`p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${paymentMethod === 'wallet' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-100 text-gray-400'}`}
+              >
+                <Banknote size={32} />
+                <span className="font-bold">เป๋าตัง</span>
+              </button>
             </div>
 
             {paymentMethod === 'cash' ? (
@@ -388,7 +416,7 @@ export default function POSPage() {
                   </span>
                 </div>
               </div>
-            ) : (
+            ) : paymentMethod === 'transfer' ? (
               <div className="flex flex-col items-center p-6 bg-gray-50 rounded-3xl mb-6 animate-in zoom-in duration-300">
                 {settings?.qr_code_url ? (
                   <div className="relative w-48 h-48">
@@ -400,7 +428,43 @@ export default function POSPage() {
                 )}
                 <p className="mt-4 font-bold text-blue-600 uppercase tracking-widest text-sm">สแกนเพื่อชำระเงิน</p>
               </div>
-            )}
+            ) : paymentMethod === 'wallet' ? (
+              (() => {
+                const { govShare, userShare } = calculatePaoTang(total, dailySubsidyUsed)
+                return (
+                  <div className="animate-in slide-in-from-bottom-2 duration-300 mb-6">
+                    
+                    <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                      <div className="flex justify-between text-lg font-bold text-gray-500">
+                        <span>ยอดรวมทั้งหมด</span>
+                        <span>฿{total.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-lg font-bold text-green-600 border-t pt-3">
+                        <span>รัฐบาลช่วยจ่าย (60%)</span>
+                        <span>-฿{govShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <label className="text-sm text-gray-400 font-bold">ใช้วงเงินไปแล้ววันนี้</label>
+                        <div className="relative w-32">
+                          <span className="absolute left-2 top-1.5 text-gray-400 text-xs font-bold">฿</span>
+                          <input
+                            type="number"
+                            value={dailySubsidyUsed || ''}
+                            placeholder="0"
+                            onChange={(e) => setDailySubsidyUsed(Number(e.target.value))}
+                            className="w-full pl-6 pr-2 py-1 bg-white border border-gray-200 rounded-lg text-right font-bold text-gray-600 outline-none focus:ring-2 ring-blue-400 text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between text-3xl mt-4 font-black text-blue-600">
+                      <span>ลูกค้าจ่าย</span>
+                      <span>฿{userShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                )
+              })()
+            ) : null }
 
             <div className="grid grid-cols-2 gap-4">
               <button onClick={() => setShowPayModal(false)} className="py-4 bg-gray-100 rounded-2xl font-bold text-xl text-gray-500">ยกเลิก</button>
