@@ -6,13 +6,17 @@ import { X, Camera, AlertCircle } from 'lucide-react'
 interface CameraScannerProps {
   onScan: (code: string) => void
   onClose: () => void
+  // Optional — lets the caller show a running cart total while
+  // scanning (used on the checkout page). Products page doesn't pass
+  // this since there's no cart concept there.
+  cartSummary?: { itemCount: number; total: number; recentItems?: string[] }
 }
 
 // Camera-based barcode scanner — a free fallback to a physical
 // scanner. Uses @zxing/library instead of the native BarcodeDetector
 // API because BarcodeDetector isn't supported in Safari/iOS at all,
 // which would silently break this on the iPad/iPhone.
-export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
+export default function CameraScanner({ onScan, onClose, cartSummary }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const readerRef = useRef<BrowserMultiFormatReader | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -82,6 +86,13 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
         <h3 className="text-white font-bold flex items-center gap-2">
           <Camera size={20} /> สแกนบาร์โค้ดด้วยกล้อง
         </h3>
+        {cartSummary && (
+          <div className="flex items-center gap-2 bg-white/10 px-4 py-1.5 rounded-full">
+            <span className="text-white/70 text-xs font-bold">{cartSummary.itemCount} รายการ</span>
+            <span className="text-white/30">|</span>
+            <span className="text-emerald-400 font-black text-sm">฿{cartSummary.total.toLocaleString()}</span>
+          </div>
+        )}
         <button onClick={handleClose} className="p-2 text-white/70 hover:text-white">
           <X size={24} />
         </button>
@@ -112,8 +123,22 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
         )}
       </div>
 
-      <div className="p-6 bg-black/80 text-center">
-        <p className="text-white/60 text-sm">วางบาร์โค้ดให้อยู่ในกรอบ กล้องจะสแกนให้อัตโนมัติ</p>
+      <div className="bg-black/80">
+        {cartSummary?.recentItems && cartSummary.recentItems.length > 0 && (
+          <div className="px-6 pt-3 flex gap-2 overflow-x-auto">
+            {cartSummary.recentItems.slice(-5).map((name, i) => (
+              <span
+                key={i}
+                className="shrink-0 text-[11px] font-bold text-white/80 bg-white/10 px-3 py-1 rounded-full whitespace-nowrap"
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="p-6 text-center">
+          <p className="text-white/60 text-sm">วางบาร์โค้ดให้อยู่ในกรอบ กล้องจะสแกนให้อัตโนมัติ</p>
+        </div>
       </div>
     </div>
   )

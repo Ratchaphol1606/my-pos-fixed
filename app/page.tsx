@@ -566,6 +566,11 @@ export default function POSPage() {
         <CameraScanner
           onScan={(code) => handleBarcodeScan(code)}
           onClose={() => setShowCameraScanner(false)}
+          cartSummary={{
+            itemCount: cart.reduce((sum, item) => sum + item.qty, 0),
+            total: subtotal,
+            recentItems: cart.map(item => `${item.name} x${item.qty}`)
+          }}
         />
       )}
     </div>
