@@ -1,8 +1,9 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Trash2, Edit3, Plus, Search, AlertCircle, X, Save, Tag, Barcode } from 'lucide-react'
+import { Trash2, Edit3, Plus, Search, AlertCircle, X, Save, Tag, Barcode, Printer } from 'lucide-react'
 import { Product, Settings } from '@/src/types'
+import BarcodeLabel from '../component/BarcodeLabel'
 
 export default function ProductPage() {
   const [products, setProducts] = useState<Product[]>([])
@@ -11,6 +12,7 @@ export default function ProductPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [form, setForm] = useState({ id: '', name: '', category: 'ทั่วไป', costPrice: 0, retailPrice: 0, stock: 0 })
+  const [labelProduct, setLabelProduct] = useState<Product | null>(null)
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -159,6 +161,16 @@ export default function ProductPage() {
                     disabled={isEditing} 
                     className={`flex-1 p-4 border rounded-2xl outline-none transition-all font-mono text-sm ${isEditing ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-200 focus:border-blue-500'}`} 
                     value={form.id} onChange={e => setForm({...form, id: e.target.value})} 
+                    onKeyDown={(e) => {
+                      // Scanning a factory barcode here fills the field
+                      // and sends Enter automatically — jump focus to
+                      // the name field instead of submitting right
+                      // away, since cost/price/stock still need filling in.
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        document.getElementById('product-name-input')?.focus()
+                      }
+                    }}
                   />
                   {!isEditing && (
                     <button
@@ -186,6 +198,7 @@ export default function ProductPage() {
             <div>
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2 block">Product Name</label>
               <input 
+                id="product-name-input"
                 className="w-full p-4 border border-slate-200 rounded-2xl outline-none focus:border-blue-500"
                 value={form.name} onChange={e => setForm({...form, name: e.target.value})} 
               />
@@ -288,6 +301,13 @@ export default function ProductPage() {
                       </div>
                     </td>
                     <td className="p-6 text-right space-x-2">
+                      <button
+                        onClick={() => setLabelProduct(p)}
+                        title="พิมพ์ป้ายบาร์โค้ด"
+                        className="p-3 bg-purple-50 text-purple-600 rounded-2xl hover:bg-purple-600 hover:text-white transition-all"
+                      >
+                        <Printer size={18}/>
+                      </button>
                       <button onClick={() => handleEdit(p)} className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all">
                         <Edit3 size={18}/>
                       </button>
@@ -334,6 +354,15 @@ export default function ProductPage() {
           </div>
         </div>
       </div>
+
+      {labelProduct && (
+        <BarcodeLabel
+          code={labelProduct.id}
+          name={labelProduct.name}
+          price={labelProduct.retail_price}
+          onClose={() => setLabelProduct(null)}
+        />
+      )}
     </div>
   )
 }

@@ -1,9 +1,10 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag } from 'lucide-react'
+import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag, Camera } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import Receipt from './component/Receipt'
+import CameraScanner from './component/CameraScanner'
 import { Product, CartItem, ReceiptDetail, Settings } from '@/src/types'
 
 export default function POSPage() {
@@ -20,6 +21,7 @@ export default function POSPage() {
   const [shouldPrint, setShouldPrint] = useState(false)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [dailySubsidyUsed, setDailySubsidyUsed] = useState<number>(0)
+  const [showCameraScanner, setShowCameraScanner] = useState(false)
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -138,6 +140,53 @@ export default function POSPage() {
     }
   }
 
+  // Looks a scanned code up directly against the products table by
+  // exact id match. We can't just check the local `products` array
+  // because the grid is paginated (10 per page) — the scanned item is
+  // very likely on a page that isn't currently loaded.
+  const [scanFeedback, setScanFeedback] = useState<'found' | 'notfound' | null>(null)
+
+  const playBeep = (freq: number, durationMs: number) => {
+    try {
+      const AudioContextClass = window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      const ctx = new AudioContextClass()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.frequency.value = freq
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      gain.gain.setValueAtTime(0.15, ctx.currentTime)
+      osc.start()
+      osc.stop(ctx.currentTime + durationMs / 1000)
+      osc.onended = () => ctx.close()
+    } catch {
+      // Audio not available (e.g. autoplay blocked before first user
+      // interaction) — silently skip, the visual feedback still shows.
+    }
+  }
+
+  const handleBarcodeScan = async (code: string) => {
+    const trimmed = code.trim()
+    if (!trimmed) return
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', trimmed)
+      .maybeSingle()
+
+    if (error || !data) {
+      setScanFeedback('notfound')
+      playBeep(220, 250) // low buzz = not found
+      setTimeout(() => setScanFeedback(null), 1200)
+      return
+    }
+    addToCart(data)
+    setScanFeedback('found')
+    playBeep(880, 120) // short high beep = added
+    setTimeout(() => setScanFeedback(null), 500)
+  }
+
   const updateCartQty = (id: string, delta: number) => {
     setCart(cart.map(item => {
       if (item.id === id) {
@@ -226,14 +275,43 @@ export default function POSPage() {
       
       {/* ฝั่งซ้าย: ค้นหาและเลือกสินค้า */}
       <div className="flex-1 flex flex-col gap-2 print:hidden min-w-0 overflow-hidden">
-        <div className="relative">
-          <Search className="absolute left-3 top-3 text-black-400" size={18} />
-          <input 
-            className="w-full p-3 pl-10 rounded-xl shadow-sm text-base text-black outline-none focus:ring-2 ring-blue-500" 
-            placeholder="ค้นหาหรือยิงบาร์โค้ด..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div className="relative flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-3 text-black-400" size={18} />
+            <input 
+              autoFocus
+              className={`w-full p-3 pl-10 rounded-xl shadow-sm text-base text-black outline-none focus:ring-2 transition-all ${
+                scanFeedback === 'found' ? 'ring-2 ring-emerald-500 bg-emerald-50' :
+                scanFeedback === 'notfound' ? 'ring-2 ring-red-500 bg-red-50' :
+                'ring-blue-500'
+              }`}
+              placeholder="ค้นหาหรือยิงบาร์โค้ด..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                // Scanners type the full code then send Enter automatically.
+                // A human typing a search query basically never hits Enter,
+                // so this is a safe way to tell "this was scanned" apart
+                // from "this is a name search in progress" — and if the
+                // exact code matches a product id, treat it as a scan;
+                // otherwise just leave it as a normal text search.
+                if (e.key === 'Enter' && search.trim()) {
+                  handleBarcodeScan(search.trim())
+                  setSearch('')
+                }
+              }}
+            />
+            {scanFeedback === 'notfound' && (
+              <span className="absolute right-3 top-2.5 text-[10px] font-bold text-red-500">ไม่พบสินค้า</span>
+            )}
+          </div>
+          <button
+            onClick={() => setShowCameraScanner(true)}
+            title="สแกนด้วยกล้อง"
+            className="shrink-0 px-4 bg-slate-900 text-white rounded-xl shadow-sm hover:bg-slate-700 transition-all flex items-center justify-center"
+          >
+            <Camera size={18} />
+          </button>
         </div>
 
         {/* แท็บหมวดหมู่ */}
@@ -481,6 +559,14 @@ export default function POSPage() {
         <div className="hidden print:block fixed top-0 left-0 bg-white">
           <Receipt detail={receiptDetail} settings={settings} />
         </div>
+      )}
+
+      {/* กล้องสแกนบาร์โค้ด — fallback ฟรีสำหรับตอนยังไม่มีเครื่องสแกน */}
+      {showCameraScanner && (
+        <CameraScanner
+          onScan={(code) => handleBarcodeScan(code)}
+          onClose={() => setShowCameraScanner(false)}
+        />
       )}
     </div>
   )
