@@ -16,7 +16,7 @@ export default function ReportsPage() {
   })
   
   const [stats, setStats] = useState({ saleTotal: 0, profitTotal: 0, count: 0 })
-  const [paymentStats, setPaymentStats] = useState({ cash: 0, transfer: 0 })
+  const [paymentStats, setPaymentStats] = useState({ cash: 0, transfer: 0, wallet: 0 })
   const [bestSellers, setBestSellers] = useState<any[]>([])
   const [rawSales, setRawSales] = useState<any[]>([]) // เก็บข้อมูลดิบสำหรับ Export
   const [loading, setLoading] = useState(true)
@@ -49,13 +49,14 @@ export default function ReportsPage() {
 
       if (salesData) {
         setRawSales(salesData)
-        let total = 0; let profit = 0; let cash = 0; let transfer = 0;
+        let total = 0; let profit = 0; let cash = 0; let transfer = 0; let wallet = 0;
         const topProductMap: any = {}
 
         salesData.forEach(sale => {
           const amount = Number(sale.total_amount) || 0
           total += amount
           if (sale.payment_method === 'cash') cash += amount
+          else if (sale.payment_method === 'wallet') wallet += amount
           else transfer += amount
 
           sale.sale_items?.forEach((item: any) => {
@@ -75,7 +76,7 @@ export default function ReportsPage() {
         })
 
         setStats({ saleTotal: total, profitTotal: profit, count: salesData.length })
-        setPaymentStats({ cash, transfer })
+        setPaymentStats({ cash, transfer, wallet })
         setBestSellers(
           Object.entries(topProductMap)
             .map(([name, d]: any) => ({ name, profit: d.profit, qty: d.qty }))
@@ -97,7 +98,7 @@ export default function ReportsPage() {
       "วันที่-เวลา": new Date(s.created_at).toLocaleString('th-TH'),
       "เลขที่ใบเสร็จ": s.receipt_no || s.id.slice(0,8),
       "ยอดขายรวม (บาท)": Number(s.total_amount),
-      "ช่องทางชำระ": s.payment_method === 'cash' ? 'เงินสด' : 'เงินโอน',
+      "ช่องทางชำระ": s.payment_method === 'cash' ? 'เงินสด' : s.payment_method === 'wallet' ? 'เป๋าตัง' : 'เงินโอน',
       "หมายเหตุ": ""
     }))
 
@@ -182,6 +183,10 @@ export default function ReportsPage() {
                 <div className="flex justify-between items-center">
                   <span className="flex items-center gap-2 text-sm font-bold text-slate-600"><CreditCard size={16} className="text-blue-500"/> โอนเงิน</span>
                   <span className="font-black">฿{paymentStats.transfer.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="flex items-center gap-2 text-sm font-bold text-slate-600"><CreditCard size={16} className="text-purple-500"/> เป๋าตัง</span>
+                  <span className="font-black">฿{paymentStats.wallet.toLocaleString()}</span>
                 </div>
              </div>
           </div>

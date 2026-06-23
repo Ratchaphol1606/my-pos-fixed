@@ -10,6 +10,7 @@ export default function SalesPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [settings, setSettings] = useState<Settings | null>(null)
   const [printingId, setPrintingId] = useState<string | null>(null)
+  const [realProfit, setRealProfit] = useState(0)
 
   const PRINT_SERVER = process.env.NEXT_PUBLIC_PRINT_SERVER_URL
 
@@ -31,6 +32,39 @@ export default function SalesPage() {
       .lte('created_at', `${selectedDate}T23:59:59`)
       .order('created_at', { ascending: false })
     if (data) setSales(data)
+
+    // Real profit: pull each line item for these sales plus the
+    // current cost_price of each product, instead of guessing a flat
+    // margin. This matches how /reports and /taxReports calculate it.
+    if (data && data.length > 0) {
+      const saleIds = data.map(s => s.id)
+      const { data: items } = await supabase
+        .from('sale_items')
+        .select('quantity, price_at_sale, product_id')
+        .in('sale_id', saleIds)
+
+      const productIds = Array.from(new Set((items || []).map(i => i.product_id)))
+      const { data: products } = await supabase
+        .from('products')
+        .select('id, cost_price')
+        .in('id', productIds)
+
+      const costMap: Record<string, number> = (products || []).reduce(
+        (acc: Record<string, number>, p: { id: string; cost_price: number }) => {
+          acc[p.id] = Number(p.cost_price) || 0
+          return acc
+        }, {})
+
+      const profit = (items || []).reduce((sum: number, item: { quantity: number; price_at_sale: number; product_id: string }) => {
+        const cost = costMap[item.product_id] || 0
+        const sellPrice = Number(item.price_at_sale) || 0
+        return sum + (sellPrice - cost) * (Number(item.quantity) || 0)
+      }, 0)
+
+      setRealProfit(profit)
+    } else {
+      setRealProfit(0)
+    }
   }
 
   const handlePrint = async (sale: Sale) => {
@@ -69,8 +103,7 @@ export default function SalesPage() {
     }
   }
 
-  const dailyTotal      = sales.reduce((sum, s) => sum + Number(s.total_amount), 0)
-  const estimatedProfit = dailyTotal * 0.3
+  const dailyTotal = sales.reduce((sum, s) => sum + Number(s.total_amount), 0)
 
   return (
     <div className="p-4 md:p-8 bg-slate-50 min-h-screen">
@@ -84,8 +117,8 @@ export default function SalesPage() {
           <p className="text-4xl font-black text-blue-500">฿{dailyTotal.toLocaleString()}</p>
         </div>
         <div className="bg-white p-6 rounded-3xl shadow-sm border-l-8 border-green-500">
-          <p className="text-slate-500 text-sm">กำไรโดยประมาณ</p>
-          <p className="text-4xl font-black text-green-600">฿{estimatedProfit.toLocaleString()}</p>
+          <p className="text-slate-500 text-sm">กำไรสุทธิ</p>
+          <p className="text-4xl font-black text-green-600">฿{realProfit.toLocaleString()}</p>
         </div>
       </div>
 

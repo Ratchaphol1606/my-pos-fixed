@@ -1,7 +1,7 @@
 "use client"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings } from 'lucide-react'
+import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut } from 'lucide-react'
 
 export default function Navbar() {
   const pathname = usePathname()
@@ -14,6 +14,11 @@ export default function Navbar() {
     { name: 'ภาษี', href: '/taxReports', icon: <DollarSignIcon size={20} /> },
     { name: 'ตั้งค่า', href: '/settings', icon: <Settings size={20} /> },
   ]
+
+  const handleLock = async () => {
+    await fetch('/api/auth', { method: 'DELETE' })
+    window.location.href = '/'
+  }
 
   return (
     // Mobile: fixed bottom bar | Desktop: sticky left sidebar that stays while scrolling
@@ -46,6 +51,15 @@ export default function Navbar() {
           <span className="text-[10px] md:text-sm font-semibold">{item.name}</span>
         </Link>
       ))}
+
+      {/* Lock screen — desktop only, pinned to bottom */}
+      <button
+        onClick={handleLock}
+        className="hidden md:flex items-center gap-3 px-3 py-2 rounded-2xl text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all mt-auto"
+      >
+        <LogOut size={20} />
+        <span className="text-sm font-semibold">ล็อกหน้าจอ</span>
+      </button>
     </nav>
   )
 }

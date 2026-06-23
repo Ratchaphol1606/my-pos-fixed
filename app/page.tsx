@@ -186,31 +186,26 @@ export default function POSPage() {
         receiptNo: currentReceiptNo
       };
 
-      const { data: saleData, error: saleError } = await supabase
-        .from('sales')
-        .insert([{
-          receipt_no: currentReceiptNo,
-          total_amount: total,
-          received_amount: snapshot.received,
-          change_amount: snapshot.change,
-          payment_method: paymentMethod,
-          receipt_snapshot: snapshot,
-          discount_amount: discount
-        }])
-        .select().single();
+      // Single atomic call: inserts the sale, the line items, and
+      // decrements stock all in one DB transaction. If stock runs out
+      // mid-checkout (e.g. another cashier just sold the last unit),
+      // the whole thing rolls back and nothing is half-written.
+      const { error: saleError } = await supabase.rpc('process_sale', {
+        p_receipt_no: currentReceiptNo,
+        p_total_amount: total,
+        p_received_amount: snapshot.received,
+        p_change_amount: snapshot.change,
+        p_discount_amount: discount,
+        p_payment_method: paymentMethod,
+        p_receipt_snapshot: snapshot,
+        p_items: cart.map(item => ({
+          product_id: item.id,
+          quantity: item.qty,
+          price_at_sale: item.retail_price
+        }))
+      })
 
       if (saleError) throw saleError;
-
-      const saleItems = cart.map(item => ({
-        sale_id: saleData.id,
-        product_id: item.id,
-        quantity: item.qty,
-        price_at_sale: item.retail_price
-      }))
-      await supabase.from('sale_items').insert(saleItems)
-      for (const item of cart) {
-        await supabase.rpc('decrement_stock', { row_id: item.id, amount: item.qty })
-      }
 
       setReceiptDetail(snapshot);
       setCart([]);
@@ -218,6 +213,7 @@ export default function POSPage() {
       setShowPayModal(false);
       setReceivedAmount(0);
       setShouldPrint(true);
+      fetchProducts(); // refresh stock numbers shown on the product grid
 
     } catch (error: any) {
       alert("เกิดข้อผิดพลาด: " + error.message)
