@@ -1,9 +1,10 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Trash2, Edit3, Plus, Search, AlertCircle, X, Save, Tag, Barcode, Printer } from 'lucide-react'
+import { Trash2, Edit3, Plus, Search, AlertCircle, X, Save, Tag, Barcode, Printer, Camera } from 'lucide-react'
 import { Product, Settings } from '@/src/types'
 import BarcodeLabel from '../component/BarcodeLabel'
+import CameraScanner from '../component/CameraScanner'
 
 export default function ProductPage() {
   const [products, setProducts] = useState<Product[]>([])
@@ -14,6 +15,7 @@ export default function ProductPage() {
   const [form, setForm] = useState({ id: '', name: '', category: 'ทั่วไป', costPrice: 0, retailPrice: 0, stock: 0 })
   const [labelProduct, setLabelProduct] = useState<Product | null>(null)
   const [showPreviewLabel, setShowPreviewLabel] = useState(false)
+  const [showCameraScanner, setShowCameraScanner] = useState(false)
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -181,6 +183,16 @@ export default function ProductPage() {
                       className="px-3 py-2 bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-600 rounded-2xl transition-all text-xs font-bold"
                     >
                       🔄
+                    </button>
+                  )}
+                  {!isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCameraScanner(true)}
+                      title="สแกนบาร์โค้ดสินค้าด้วยกล้อง"
+                      className="px-3 py-2 bg-slate-900 hover:bg-slate-700 text-white rounded-2xl transition-all"
+                    >
+                      <Camera size={16} />
                     </button>
                   )}
                   <button
@@ -380,6 +392,18 @@ export default function ProductPage() {
           name={form.name || 'สินค้าใหม่'}
           price={form.retailPrice}
           onClose={() => setShowPreviewLabel(false)}
+        />
+      )}
+
+      {showCameraScanner && (
+        <CameraScanner
+          onScan={(code) => {
+            setForm(f => ({ ...f, id: code.trim() }))
+            setShowCameraScanner(false)
+            // Jump to name field next, same as a hardware scan would.
+            setTimeout(() => document.getElementById('product-name-input')?.focus(), 100)
+          }}
+          onClose={() => setShowCameraScanner(false)}
         />
       )}
     </div>
