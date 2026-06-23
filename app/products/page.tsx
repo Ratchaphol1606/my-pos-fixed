@@ -13,6 +13,7 @@ export default function ProductPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [form, setForm] = useState({ id: '', name: '', category: 'ทั่วไป', costPrice: 0, retailPrice: 0, stock: 0 })
   const [labelProduct, setLabelProduct] = useState<Product | null>(null)
+  const [showPreviewLabel, setShowPreviewLabel] = useState(false)
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -182,6 +183,15 @@ export default function ProductPage() {
                       🔄
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setShowPreviewLabel(true)}
+                    disabled={!form.id}
+                    title="ดูตัวอย่างบาร์โค้ด"
+                    className="px-3 py-2 bg-purple-50 hover:bg-purple-600 text-purple-600 hover:text-white rounded-2xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Printer size={16} />
+                  </button>
                 </div>
               </div>
               <div>
@@ -361,6 +371,15 @@ export default function ProductPage() {
           name={labelProduct.name}
           price={labelProduct.retail_price}
           onClose={() => setLabelProduct(null)}
+        />
+      )}
+
+      {showPreviewLabel && (
+        <BarcodeLabel
+          code={form.id}
+          name={form.name || 'สินค้าใหม่'}
+          price={form.retailPrice}
+          onClose={() => setShowPreviewLabel(false)}
         />
       )}
     </div>
