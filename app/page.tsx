@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/src/lib/supabase'
 import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag, Camera } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -132,12 +132,19 @@ export default function POSPage() {
   }, [shouldPrint, receiptDetail, PRINT_SERVER])
 
   const addToCart = (product: Product) => {
-    const existing = cart.find(item => item.id === product.id)
-    if (existing) {
-      setCart(cart.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item))
-    } else {
-      setCart([...cart, { ...product, qty: 1 }])
-    }
+    // Functional update form is critical here: multiple scans can fire
+    // in quick succession (especially from the camera scanner, where
+    // network lookups can overlap if you move to the next item before
+    // the previous one resolves). Closing over `cart` directly would
+    // let concurrent calls overwrite each other's updates — this way
+    // every call always operates on the actual latest state.
+    setCart(prevCart => {
+      const existing = prevCart.find(item => item.id === product.id)
+      if (existing) {
+        return prevCart.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item)
+      }
+      return [...prevCart, { ...product, qty: 1 }]
+    })
   }
 
   // Looks a scanned code up directly against the products table by
@@ -166,29 +173,66 @@ export default function POSPage() {
     }
   }
 
-  const handleBarcodeScan = async (code: string) => {
+  // Scans are queued and processed one at a time, in order. Without
+  // this, scanning several items in quick succession (very easy with
+  // the camera scanner, since it decodes continuously) fires multiple
+  // overlapping Supabase lookups at once. Each one resolves at a
+  // different time and calls setCart independently — with enough of
+  // them stacking up, the UI visibly stalls and items can appear to
+  // go missing or not register, which is the "freeze" experienced
+  // when scanning 8+ items back to back. Queuing makes every scan
+  // wait for the previous one to fully finish before starting.
+  const scanQueueRef = useRef<string[]>([])
+  const isProcessingScanRef = useRef(false)
+
+  const processScanQueue = async () => {
+    if (isProcessingScanRef.current) return
+    isProcessingScanRef.current = true
+
+    while (scanQueueRef.current.length > 0) {
+      const code = scanQueueRef.current.shift()!
+      const trimmed = code.trim()
+      if (!trimmed) continue
+
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('id', trimmed)
+          .maybeSingle()
+
+        if (error || !data) {
+          setScanFeedback('notfound')
+          playBeep(220, 250) // low buzz = not found
+          setTimeout(() => setScanFeedback(null), 800)
+        } else {
+          addToCart(data)
+          setScanFeedback('found')
+          playBeep(880, 120) // short high beep = added
+          setTimeout(() => setScanFeedback(null), 350)
+        }
+      } catch {
+        setScanFeedback('notfound')
+      }
+
+      // Small gap between processing queued scans so the beep/flash
+      // feedback for each item is visually distinguishable even when
+      // several were queued up back to back.
+      await new Promise(resolve => setTimeout(resolve, 150))
+    }
+
+    isProcessingScanRef.current = false
+  }
+
+  const handleBarcodeScan = (code: string) => {
     const trimmed = code.trim()
     if (!trimmed) return
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .eq('id', trimmed)
-      .maybeSingle()
-
-    if (error || !data) {
-      setScanFeedback('notfound')
-      playBeep(220, 250) // low buzz = not found
-      setTimeout(() => setScanFeedback(null), 1200)
-      return
-    }
-    addToCart(data)
-    setScanFeedback('found')
-    playBeep(880, 120) // short high beep = added
-    setTimeout(() => setScanFeedback(null), 500)
+    scanQueueRef.current.push(trimmed)
+    processScanQueue()
   }
 
   const updateCartQty = (id: string, delta: number) => {
-    setCart(cart.map(item => {
+    setCart(prevCart => prevCart.map(item => {
       if (item.id === id) {
         const newQty = item.qty + delta
         return newQty > 0 ? { ...item, qty: newQty } : item
@@ -198,7 +242,7 @@ export default function POSPage() {
   }
 
   const removeFromCart = (id: string) => {
-    setCart(cart.filter(item => item.id !== id))
+    setCart(prevCart => prevCart.filter(item => item.id !== id))
   }
 
   const generateReceiptNo = async () => {
