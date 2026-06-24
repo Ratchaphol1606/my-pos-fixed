@@ -37,7 +37,7 @@ export default function ProductPage() {
     let query = supabase.from('products').select('*', { count: 'exact' })
     
     if (search) {
-      query = query.ilike('name', `%${search}%`)
+      query = query.or(`name.ilike.%${search}%,id.ilike.%${search}%`)
     }
     
     const from = (currentPage - 1) * pageSize
@@ -401,17 +401,19 @@ export default function ProductPage() {
         />
       )}
 
-      {showCameraScanner && (
-        <CameraScanner
-          onScan={(code) => {
-            setForm(f => ({ ...f, id: code.trim() }))
-            setShowCameraScanner(false)
-            // Jump to name field next, same as a hardware scan would.
-            setTimeout(() => document.getElementById('product-name-input')?.focus(), 100)
-          }}
-          onClose={() => setShowCameraScanner(false)}
-        />
-      )}
+      {/* Always mounted (never conditionally rendered) so the camera
+          stream stays alive between opens — see CameraScanner.tsx for
+          why this matters on iOS Safari. */}
+      <CameraScanner
+        visible={showCameraScanner}
+        onScan={(code) => {
+          setForm(f => ({ ...f, id: code.trim() }))
+          setShowCameraScanner(false)
+          // Jump to name field next, same as a hardware scan would.
+          setTimeout(() => document.getElementById('product-name-input')?.focus(), 100)
+        }}
+        onClose={() => setShowCameraScanner(false)}
+      />
     </div>
   )
 }

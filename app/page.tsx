@@ -73,7 +73,7 @@ export default function POSPage() {
     }
     
     if (search) {
-      query = query.ilike('name', `%${search}%`)
+      query = query.or(`name.ilike.%${search}%,id.ilike.%${search}%`)
     }
     
     const from = (currentPage - 1) * pageSize
@@ -605,18 +605,21 @@ export default function POSPage() {
         </div>
       )}
 
-      {/* กล้องสแกนบาร์โค้ด — fallback ฟรีสำหรับตอนยังไม่มีเครื่องสแกน */}
-      {showCameraScanner && (
-        <CameraScanner
-          onScan={(code) => handleBarcodeScan(code)}
-          onClose={() => setShowCameraScanner(false)}
-          cartSummary={{
-            itemCount: cart.reduce((sum, item) => sum + item.qty, 0),
-            total: subtotal,
-            recentItems: cart.map(item => `${item.name} x${item.qty}`)
-          }}
-        />
-      )}
+      {/* กล้องสแกนบาร์โค้ด — fallback ฟรีสำหรับตอนยังไม่มีเครื่องสแกน
+          Always mounted (never conditionally rendered) so the camera
+          stream stays alive between opens — unmounting it fully
+          releases the camera, which makes iOS Safari re-prompt for
+          permission every single time it's reopened. */}
+      <CameraScanner
+        visible={showCameraScanner}
+        onScan={(code) => handleBarcodeScan(code)}
+        onClose={() => setShowCameraScanner(false)}
+        cartSummary={{
+          itemCount: cart.reduce((sum, item) => sum + item.qty, 0),
+          total: subtotal,
+          recentItems: cart.map(item => `${item.name} x${item.qty}`)
+        }}
+      />
     </div>
   )
 }
