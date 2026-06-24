@@ -69,64 +69,66 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-600 to-blue-800 flex flex-col items-center justify-center print:hidden">
-      <div className="flex flex-col items-center gap-6">
+    <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-600 to-blue-800 overflow-y-auto print:hidden">
+      <div className="min-h-full flex flex-col items-center justify-center py-8">
+        <div className="flex flex-col items-center gap-6">
 
-        {/* Icon */}
-        <div className="bg-white/20 p-5 rounded-full">
-          <Lock size={40} className="text-white" />
-        </div>
+          {/* Icon */}
+          <div className="bg-white/20 p-5 rounded-full">
+            <Lock size={40} className="text-white" />
+          </div>
 
-        {/* Title */}
-        <div className="text-center">
-          <h1 className="text-white text-2xl font-black">บุญชอบเครื่องครัว</h1>
-          <p className="text-blue-200 text-sm mt-1">กรุณาใส่รหัส PIN</p>
-        </div>
+          {/* Title */}
+          <div className="text-center">
+            <h1 className="text-white text-2xl font-black">บุญชอบเครื่องครัว</h1>
+            <p className="text-blue-200 text-sm mt-1">กรุณาใส่รหัส PIN</p>
+          </div>
 
-        {/* PIN dots */}
-        <div className={`flex gap-4 ${shake ? 'animate-bounce' : ''}`}>
-          {[0,1,2,3].map(i => (
-            <div
-              key={i}
-              className={`w-4 h-4 rounded-full border-2 border-white transition-all ${
-                pin.length > i ? 'bg-white' : 'bg-transparent'
-              } ${error ? 'border-red-400 bg-red-400' : ''}`}
-            />
-          ))}
-        </div>
+          {/* PIN dots */}
+          <div className={`flex gap-4 ${shake ? 'animate-bounce' : ''}`}>
+            {[0,1,2,3].map(i => (
+              <div
+                key={i}
+                className={`w-4 h-4 rounded-full border-2 border-white transition-all ${
+                  pin.length > i ? 'bg-white' : 'bg-transparent'
+                } ${error ? 'border-red-400 bg-red-400' : ''}`}
+              />
+            ))}
+          </div>
 
-        {error && (
-          <p className="text-red-300 text-sm font-bold -mt-2">รหัสไม่ถูกต้อง</p>
-        )}
+          {error && (
+            <p className="text-red-300 text-sm font-bold -mt-2">รหัสไม่ถูกต้อง</p>
+          )}
 
-        {/* Numpad */}
-        <div className={`grid grid-cols-3 gap-3 mt-2 ${submitting ? 'opacity-50 pointer-events-none' : ''}`}>
-          {['1','2','3','4','5','6','7','8','9'].map(n => (
+          {/* Numpad */}
+          <div className={`grid grid-cols-3 gap-3 mt-2 ${submitting ? 'opacity-50 pointer-events-none' : ''}`}>
+            {['1','2','3','4','5','6','7','8','9'].map(n => (
+              <button
+                key={n}
+                onClick={() => press(n)}
+                disabled={submitting}
+                className="w-20 h-20 bg-white/20 hover:bg-white/30 active:bg-white/10 text-white text-2xl font-bold rounded-2xl transition-all"
+              >
+                {n}
+              </button>
+            ))}
+            {/* Bottom row */}
+            <div /> {/* empty */}
             <button
-              key={n}
-              onClick={() => press(n)}
+              onClick={() => press('0')}
               disabled={submitting}
               className="w-20 h-20 bg-white/20 hover:bg-white/30 active:bg-white/10 text-white text-2xl font-bold rounded-2xl transition-all"
             >
-              {n}
+              0
             </button>
-          ))}
-          {/* Bottom row */}
-          <div /> {/* empty */}
-          <button
-            onClick={() => press('0')}
-            disabled={submitting}
-            className="w-20 h-20 bg-white/20 hover:bg-white/30 active:bg-white/10 text-white text-2xl font-bold rounded-2xl transition-all"
-          >
-            0
-          </button>
-          <button
-            onClick={del}
-            disabled={submitting}
-            className="w-20 h-20 bg-white/20 hover:bg-white/30 active:bg-white/10 text-white rounded-2xl transition-all flex items-center justify-center"
-          >
-            <Delete size={24} />
-          </button>
+            <button
+              onClick={del}
+              disabled={submitting}
+              className="w-20 h-20 bg-white/20 hover:bg-white/30 active:bg-white/10 text-white rounded-2xl transition-all flex items-center justify-center"
+            >
+              <Delete size={24} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

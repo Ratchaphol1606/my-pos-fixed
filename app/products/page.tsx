@@ -158,11 +158,11 @@ export default function ProductPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2 block">ID / Barcode</label>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2">
                   <input 
                     ref={idInputRef}
                     disabled={isEditing} 
-                    className={`flex-1 p-4 border rounded-2xl outline-none transition-all font-mono text-sm ${isEditing ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-200 focus:border-blue-500'}`} 
+                    className={`w-full p-4 border rounded-2xl outline-none transition-all font-mono text-sm ${isEditing ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-200 focus:border-blue-500'}`} 
                     value={form.id} onChange={e => setForm({...form, id: e.target.value})} 
                     onKeyDown={(e) => {
                       // Scanning a factory barcode here fills the field
@@ -175,35 +175,41 @@ export default function ProductPage() {
                       }
                     }}
                   />
-                  {!isEditing && (
+                  {/* Action buttons sit on their own row so they never
+                      have to squeeze beside the input — that's what
+                      was pushing past the column edge into the
+                      Category field on iPad-width screens. */}
+                  <div className="flex gap-2">
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, id: generateProductId() }))}
+                        title="สร้างรหัสใหม่"
+                        className="flex-1 px-3 py-2 bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-600 rounded-2xl transition-all text-xs font-bold"
+                      >
+                        🔄 รหัสใหม่
+                      </button>
+                    )}
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => setShowCameraScanner(true)}
+                        title="สแกนบาร์โค้ดสินค้าด้วยกล้อง"
+                        className="flex-1 px-3 py-2 bg-slate-900 hover:bg-slate-700 text-white rounded-2xl transition-all flex items-center justify-center gap-1.5 text-xs font-bold"
+                      >
+                        <Camera size={16} /> สแกน
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => setForm(f => ({ ...f, id: generateProductId() }))}
-                      title="สร้างรหัสใหม่"
-                      className="px-3 py-2 bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-600 rounded-2xl transition-all text-xs font-bold"
+                      onClick={() => setShowPreviewLabel(true)}
+                      disabled={!form.id}
+                      title="ดูตัวอย่างบาร์โค้ด"
+                      className="flex-1 px-3 py-2 bg-purple-50 hover:bg-purple-600 text-purple-600 hover:text-white rounded-2xl transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 text-xs font-bold"
                     >
-                      🔄
+                      <Printer size={16} /> ป้าย
                     </button>
-                  )}
-                  {!isEditing && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCameraScanner(true)}
-                      title="สแกนบาร์โค้ดสินค้าด้วยกล้อง"
-                      className="px-3 py-2 bg-slate-900 hover:bg-slate-700 text-white rounded-2xl transition-all"
-                    >
-                      <Camera size={16} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowPreviewLabel(true)}
-                    disabled={!form.id}
-                    title="ดูตัวอย่างบาร์โค้ด"
-                    className="px-3 py-2 bg-purple-50 hover:bg-purple-600 text-purple-600 hover:text-white rounded-2xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Printer size={16} />
-                  </button>
+                  </div>
                 </div>
               </div>
               <div>
