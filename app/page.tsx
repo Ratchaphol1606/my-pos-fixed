@@ -66,7 +66,7 @@ export default function POSPage() {
   }, [currentPage, selectedCat, search])
 
   const fetchProducts = async () => {
-    let query = supabase.from('products').select('*', { count: 'exact' })
+    let query = supabase.from('products').select('*', { count: 'exact' }).eq('is_active', true)
     
     if (selectedCat !== 'ทั้งหมด') {
       query = query.eq('category', selectedCat)
@@ -199,6 +199,7 @@ export default function POSPage() {
           .from('products')
           .select('*')
           .eq('id', trimmed)
+          .eq('is_active', true)
           .maybeSingle()
 
         if (error || !data) {

@@ -9,6 +9,7 @@ import CameraScanner from '../component/CameraScanner'
 export default function ProductPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [search, setSearch] = useState('')
+  const [showHidden, setShowHidden] = useState(false)
   const [loading, setLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -35,7 +36,11 @@ export default function ProductPage() {
   const fetchProducts = async () => {
     setLoading(true)
     let query = supabase.from('products').select('*', { count: 'exact' })
-    
+
+    // Soft-deleted products are hidden by default — toggled via
+    // showHidden so a mis-hide can still be found and undone.
+    query = query.eq('is_active', !showHidden ? true : false)
+
     if (search) {
       query = query.or(`name.ilike.%${search}%,id.ilike.%${search}%`)
     }
@@ -60,7 +65,7 @@ export default function ProductPage() {
 
   useEffect(() => {
     fetchProducts()
-  }, [currentPage, search])
+  }, [currentPage, search, showHidden])
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value)
@@ -123,14 +128,31 @@ export default function ProductPage() {
   }
 
   const handleDelete = async (p: Product) => {
-    if (!confirm(`ต้องการลบ "${p.name}" ออกจากระบบ?`)) return
+    // Products with sales history can't actually be removed from the
+    // database — sale_items references them with ON DELETE RESTRICT
+    // specifically so historical reports never lose a line item.
+    // "Delete" here just hides the product from the active list and
+    // checkout grid instead; the row and its sales history stay
+    // completely intact, and it can be restored later if needed.
+    if (!confirm(`ซ่อน "${p.name}" จากรายการสินค้า? (ยังดูประวัติการขายได้ปกติ)`)) return
     try {
-      await supabase.from('sale_items').delete().eq('product_id', p.id)
-      const { error } = await supabase.from('products').delete().eq('id', p.id)
+      const { error } = await supabase.from('products').update({ is_active: false }).eq('id', p.id)
       if (error) throw error
       fetchProducts()
-    } catch (err: any) {
-      alert('❌ ลบไม่สำเร็จ: ' + err.message)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      alert('❌ ซ่อนไม่สำเร็จ: ' + message)
+    }
+  }
+
+  const handleRestore = async (p: Product) => {
+    try {
+      const { error } = await supabase.from('products').update({ is_active: true }).eq('id', p.id)
+      if (error) throw error
+      fetchProducts()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      alert('❌ กู้คืนไม่สำเร็จ: ' + message)
     }
   }
 
@@ -150,6 +172,14 @@ export default function ProductPage() {
             </h1>
             <p className="text-slate-500 font-medium">จัดการสต็อกสินค้าและต้นทุนอย่างเป็นระบบ</p>
           </div>
+          <button
+            onClick={() => { setShowHidden(h => !h); setCurrentPage(1) }}
+            className={`px-5 py-3 rounded-2xl font-bold text-sm transition-all ${
+              showHidden ? 'bg-amber-500 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            {showHidden ? '← กลับไปสินค้าที่ใช้งาน' : 'สินค้าที่ซ่อนไว้'}
+          </button>
         </header>
 
         {/* --- Input Section --- */}
@@ -164,14 +194,29 @@ export default function ProductPage() {
                     disabled={isEditing} 
                     className={`w-full p-4 border rounded-2xl outline-none transition-all font-mono text-sm ${isEditing ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-200 focus:border-blue-500'}`} 
                     value={form.id} onChange={e => setForm({...form, id: e.target.value})} 
-                    onKeyDown={(e) => {
+                    onKeyDown={async (e) => {
                       // Scanning a factory barcode here fills the field
-                      // and sends Enter automatically — jump focus to
-                      // the name field instead of submitting right
-                      // away, since cost/price/stock still need filling in.
+                      // and sends Enter automatically (same for a
+                      // hardware/Bluetooth scanner). Check if this
+                      // code already belongs to a product first —
+                      // restocking an existing item should pull its
+                      // data in, not jump straight to "add new".
                       if (e.key === 'Enter') {
                         e.preventDefault()
-                        document.getElementById('product-name-input')?.focus()
+                        const trimmed = form.id.trim()
+                        if (!trimmed) return
+
+                        const { data: existingProduct } = await supabase
+                          .from('products')
+                          .select('*')
+                          .eq('id', trimmed)
+                          .maybeSingle()
+
+                        if (existingProduct && !isEditing) {
+                          handleEdit(existingProduct)
+                        } else {
+                          document.getElementById('product-name-input')?.focus()
+                        }
                       }
                     }}
                   />
@@ -329,22 +374,34 @@ export default function ProductPage() {
                       </div>
                     </td>
                     <td className="p-6 text-right space-x-2">
-                      <button
-                        onClick={() => setLabelProduct(p)}
-                        title="พิมพ์ป้ายบาร์โค้ด"
-                        className="p-3 bg-purple-50 text-purple-600 rounded-2xl hover:bg-purple-600 hover:text-white transition-all"
-                      >
-                        <Printer size={18}/>
-                      </button>
-                      <button onClick={() => handleEdit(p)} className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all">
-                        <Edit3 size={18}/>
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(p)}
-                        className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all"
-                      >
-                        <Trash2 size={18}/>
-                      </button>
+                      {showHidden ? (
+                        <button
+                          onClick={() => handleRestore(p)}
+                          title="กู้คืนสินค้านี้"
+                          className="px-4 py-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-600 hover:text-white transition-all font-bold text-xs"
+                        >
+                          กู้คืน
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setLabelProduct(p)}
+                            title="พิมพ์ป้ายบาร์โค้ด"
+                            className="p-3 bg-purple-50 text-purple-600 rounded-2xl hover:bg-purple-600 hover:text-white transition-all"
+                          >
+                            <Printer size={18}/>
+                          </button>
+                          <button onClick={() => handleEdit(p)} className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all">
+                            <Edit3 size={18}/>
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(p)}
+                            className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all"
+                          >
+                            <Trash2 size={18}/>
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -406,11 +463,26 @@ export default function ProductPage() {
           why this matters on iOS Safari. */}
       <CameraScanner
         visible={showCameraScanner}
-        onScan={(code) => {
-          setForm(f => ({ ...f, id: code.trim() }))
+        onScan={async (code) => {
+          const trimmed = code.trim()
           setShowCameraScanner(false)
-          // Jump to name field next, same as a hardware scan would.
-          setTimeout(() => document.getElementById('product-name-input')?.focus(), 100)
+
+          // If this barcode already belongs to a product, pull its
+          // full data into the form (restocking flow) instead of
+          // treating it as a brand new item.
+          const { data: existingProduct } = await supabase
+            .from('products')
+            .select('*')
+            .eq('id', trimmed)
+            .maybeSingle()
+
+          if (existingProduct) {
+            handleEdit(existingProduct)
+          } else {
+            setForm(f => ({ ...f, id: trimmed }))
+            // Jump to name field next, same as a hardware scan would.
+            setTimeout(() => document.getElementById('product-name-input')?.focus(), 100)
+          }
         }}
         onClose={() => setShowCameraScanner(false)}
       />

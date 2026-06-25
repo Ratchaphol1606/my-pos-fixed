@@ -6,6 +6,7 @@ export interface Product {
   retail_price: number;
   stock: number;
   date_add: string;
+  is_active: boolean;
 }
 
 export interface CartItem extends Product {
