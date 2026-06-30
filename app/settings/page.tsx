@@ -1,7 +1,8 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle, Award } from 'lucide-react'
+import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle, Award, Users, Search, Edit3, X } from 'lucide-react'
+import { Customer } from '@/src/types'
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>({
@@ -20,9 +21,85 @@ export default function SettingsPage() {
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
+  // --- จัดการสมาชิก (Member Management) ---
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [loadingCustomers, setLoadingCustomers] = useState(false)
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [editPoints, setEditPoints] = useState(0)
+  const [savingCustomer, setSavingCustomer] = useState(false)
+
   useEffect(() => {
     fetchSettings()
   }, [])
+
+  useEffect(() => {
+    fetchCustomers()
+  }, [customerSearch])
+
+  const fetchCustomers = async () => {
+    setLoadingCustomers(true)
+    try {
+      let query = supabase.from('customers').select('*').order('created_at', { ascending: false }).limit(50)
+      if (customerSearch.trim()) {
+        query = query.or(`name.ilike.%${customerSearch}%,phone.ilike.%${customerSearch}%`)
+      }
+      const { data, error } = await query
+      if (error) throw error
+      setCustomers(data || [])
+    } catch (error) {
+      console.error('Error fetching customers:', error)
+    } finally {
+      setLoadingCustomers(false)
+    }
+  }
+
+  const openEditCustomer = (c: Customer) => {
+    setEditingCustomer(c)
+    setEditName(c.name)
+    setEditPhone(c.phone)
+    setEditPoints(c.current_points)
+  }
+
+  const closeEditCustomer = () => {
+    setEditingCustomer(null)
+  }
+
+  const handleSaveCustomer = async () => {
+    if (!editingCustomer) return
+    const name = editName.trim()
+    const phone = editPhone.trim()
+    if (!name || !phone) {
+      alert('กรุณากรอกชื่อและเบอร์โทรศัพท์')
+      return
+    }
+    setSavingCustomer(true)
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({ name, phone, current_points: editPoints })
+        .eq('id', editingCustomer.id)
+
+      if (error) {
+        if (error.code === '23505') {
+          alert('เบอร์โทรศัพท์นี้ถูกใช้โดยสมาชิกคนอื่นแล้ว')
+        } else {
+          throw error
+        }
+        return
+      }
+
+      alert('✅ บันทึกข้อมูลสมาชิกแล้ว')
+      closeEditCustomer()
+      fetchCustomers()
+    } catch (error: any) {
+      alert('❌ ผิดพลาด: ' + error.message)
+    } finally {
+      setSavingCustomer(false)
+    }
+  }
 
   const fetchSettings = async () => {
     try {
@@ -239,7 +316,135 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
+
+        {/* --- จัดการสมาชิก --- */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 mt-8">
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Users size={20} className="text-black"/> จัดการสมาชิก</h2>
+
+          <div className="relative mb-6">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+            <input
+              placeholder="ค้นหาชื่อหรือเบอร์โทรศัพท์..."
+              className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-2xl outline-none transition-all text-black"
+              value={customerSearch}
+              onChange={e => setCustomerSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-slate-100">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">
+                  <th className="p-4">ชื่อ</th>
+                  <th className="p-4">เบอร์โทรศัพท์</th>
+                  <th className="p-4 text-center">แต้มสะสม</th>
+                  <th className="p-4 text-right">ยอดซื้อสะสม</th>
+                  <th className="p-4 text-right">แก้ไข</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {customers.map(c => (
+                  <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-4 font-bold text-slate-800">{c.name}</td>
+                    <td className="p-4 text-slate-500 font-mono text-sm">{c.phone}</td>
+                    <td className="p-4 text-center">
+                      <span className="inline-block px-3 py-1 rounded-xl font-black text-xs bg-blue-50 text-blue-600 border border-blue-100">
+                        {c.current_points} แต้ม
+                      </span>
+                    </td>
+                    <td className="p-4 text-right text-slate-500 text-sm">฿{Number(c.total_spent).toLocaleString()}</td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => openEditCustomer(c)}
+                        className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"
+                        title="แก้ไขข้อมูลสมาชิก"
+                      >
+                        <Edit3 size={16}/>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!loadingCustomers && customers.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-10 text-center text-slate-400 font-bold">
+                      ไม่พบสมาชิก
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
+
+      {editingCustomer && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={closeEditCustomer}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-xl w-full max-w-sm overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-lg font-bold text-black">แก้ไขข้อมูลสมาชิก</h2>
+              <button onClick={closeEditCustomer} className="p-2 rounded-xl hover:bg-slate-100 text-slate-500">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">ชื่อ / ชื่อเล่น</label>
+                <input
+                  className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">เบอร์โทรศัพท์</label>
+                <input
+                  className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
+                  value={editPhone}
+                  onChange={e => setEditPhone(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">
+                  <Award size={12} className="inline mr-1"/> แต้มสะสม (ปรับด้วยมือ)
+                </label>
+                <input
+                  type="number"
+                  className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
+                  value={editPoints}
+                  onChange={e => setEditPoints(Number(e.target.value))}
+                />
+                <p className="text-[10px] text-slate-400 mt-1.5">
+                  ⚠️ การแก้ไขแต้มตรงนี้จะไม่บันทึกลงประวัติธุรกรรม (point_transactions) ใช้สำหรับแก้ไขข้อผิดพลาดเท่านั้น
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 border-t flex gap-3">
+              <button
+                onClick={closeEditCustomer}
+                className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleSaveCustomer}
+                disabled={savingCustomer}
+                className="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                <Save size={18} />
+                {savingCustomer ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -336,7 +336,18 @@ export default function POSPage() {
   // แต้มที่ลูกค้าเลือกใช้แลกส่วนลด (REQ-05)
   const redeemUnit = settings?.redeem_point_use || 0
   const redeemValue = settings?.redeem_discount_thb || 0
-  const maxRedeemablePoints = selectedCustomer ? selectedCustomer.current_points : 0
+  const remainingPayable = Math.max(0, subtotal - discount)
+  // Points are capped by two things: how many the customer actually has,
+  // and how many would be "useful" — redeeming more than what's needed
+  // to cover the remaining bill is pointless and would otherwise let the
+  // discount exceed the total. maxPointsByAmount finds the largest
+  // multiple of redeemUnit whose THB value still fits within what's left to pay.
+  const maxPointsByAmount = (redeemUnit > 0 && redeemValue > 0)
+    ? Math.floor(remainingPayable / redeemValue) * redeemUnit
+    : 0
+  const maxRedeemablePoints = selectedCustomer
+    ? Math.min(selectedCustomer.current_points, maxPointsByAmount)
+    : 0
   const pointsDiscount = (redeemUnit > 0 && redeemPoints > 0)
     ? Math.floor(redeemPoints / redeemUnit) * redeemValue
     : 0
@@ -348,15 +359,19 @@ export default function POSPage() {
   const earnUnit = settings?.earn_amount_thb || 0
   const pointsEarned = (selectedCustomer && earnUnit > 0) ? Math.floor(total / earnUnit) : 0
 
+  useEffect(() => {
+    setRedeemPoints(prev => Math.min(prev, maxRedeemablePoints))
+  }, [maxRedeemablePoints])
+
   const handleFinish = async () => {
     // Validation rules (REQ-05): can't redeem more points than owned,
     // and discount (including points) can't exceed the bill total.
-    if (selectedCustomer && redeemPoints > maxRedeemablePoints) {
-      alert(`ลูกค้ามีแต้มไม่พอ (มี ${maxRedeemablePoints} แต้ม)`)
+    if (selectedCustomer && redeemPoints > selectedCustomer.current_points) {
+      alert(`ลูกค้ามีแต้มไม่พอ (มี ${selectedCustomer.current_points} แต้ม)`)
       return
     }
     if (totalDiscount > subtotal) {
-      alert('ส่วนลดรวมเกินยอดบิล')
+      alert('ส่วนลดรวม (รวมแต้ม) เกินยอดบิล ลดจำนวนแต้มที่ใช้ลง')
       return
     }
 
