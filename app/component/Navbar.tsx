@@ -11,7 +11,7 @@ export default function Navbar() {
   const menuItems = [
     { name: 'คิดเงิน', href: '/', icon: <ShoppingCart size={20} />, adminOnly: false },
     { name: 'สินค้า', href: '/products', icon: <Package size={20} />, adminOnly: false },
-    { name: 'ยอดขาย', href: '/sales', icon: <DollarSign size={20} />, adminOnly: true },
+    { name: 'ยอดขาย', href: '/sales', icon: <DollarSign size={20} />, adminOnly: false },
     { name: 'รายงานสรุป', href: '/reports', icon: <BarChart3 size={20} />, adminOnly: true },
     { name: 'ภาษี', href: '/taxReports', icon: <DollarSignIcon size={20} />, adminOnly: true },
     { name: 'ตั้งค่า', href: '/settings', icon: <Settings size={20} />, adminOnly: true },
