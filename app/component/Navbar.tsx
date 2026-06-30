@@ -1,19 +1,21 @@
 "use client"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut } from 'lucide-react'
+import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck } from 'lucide-react'
+import { useRole } from '@/src/lib/RoleContext'
 
 export default function Navbar() {
   const pathname = usePathname()
-  
+  const role = useRole()
+
   const menuItems = [
-    { name: 'คิดเงิน', href: '/', icon: <ShoppingCart size={20} /> },
-    { name: 'สินค้า', href: '/products', icon: <Package size={20} /> },
-    { name: 'ยอดขาย', href: '/sales', icon: <DollarSign size={20} /> },
-    { name: 'รายงานสรุป', href: '/reports', icon: <BarChart3 size={20} /> },
-    { name: 'ภาษี', href: '/taxReports', icon: <DollarSignIcon size={20} /> },
-    { name: 'ตั้งค่า', href: '/settings', icon: <Settings size={20} /> },
-  ]
+    { name: 'คิดเงิน', href: '/', icon: <ShoppingCart size={20} />, adminOnly: false },
+    { name: 'สินค้า', href: '/products', icon: <Package size={20} />, adminOnly: false },
+    { name: 'ยอดขาย', href: '/sales', icon: <DollarSign size={20} />, adminOnly: true },
+    { name: 'รายงานสรุป', href: '/reports', icon: <BarChart3 size={20} />, adminOnly: true },
+    { name: 'ภาษี', href: '/taxReports', icon: <DollarSignIcon size={20} />, adminOnly: true },
+    { name: 'ตั้งค่า', href: '/settings', icon: <Settings size={20} />, adminOnly: true },
+  ].filter(item => !item.adminOnly || role === 'admin')
 
   const handleLock = async () => {
     await fetch('/api/auth', { method: 'DELETE' })
@@ -35,6 +37,13 @@ export default function Navbar() {
       <div className="hidden md:block mb-6 px-2 pt-2">
         <h1 className="text-xl font-black text-blue-600 tracking-tight">MY POS</h1>
         <p className="text-[10px] text-gray-400 font-medium">บุญชอบเครื่องครัว</p>
+        {role && (
+          <span className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+            role === 'admin' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'
+          }`}>
+            <ShieldCheck size={10} /> {role === 'admin' ? 'ผู้ดูแลระบบ' : 'แคชเชียร์'}
+          </span>
+        )}
       </div>
 
       {menuItems.map((item) => (
