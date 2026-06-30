@@ -1,9 +1,11 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { Lock, Delete } from 'lucide-react'
+import { RoleContext, Role } from '@/src/lib/RoleContext'
 
 export default function PinLock({ children }: { children: React.ReactNode }) {
   const [unlocked, setUnlocked] = useState(false)
+  const [role, setRole] = useState<Role>(null)
   const [checking, setChecking] = useState(true)
   const [pin, setPin]           = useState('')
   const [error, setError]       = useState(false)
@@ -12,10 +14,16 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
 
   // Ask the server if we already have a valid session cookie.
   // The cookie is httpOnly, so JS can't read it directly — we just
-  // try a request and see if it's accepted.
+  // try a request and see if it's accepted, and which role it carries.
   useEffect(() => {
     fetch('/api/auth', { method: 'GET' })
-      .then(res => setUnlocked(res.ok))
+      .then(async res => {
+        setUnlocked(res.ok)
+        if (res.ok) {
+          const data = await res.json()
+          setRole(data.role ?? null)
+        }
+      })
       .catch(() => setUnlocked(false))
       .finally(() => setChecking(false))
   }, [])
@@ -33,6 +41,8 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ pin: candidate })
       })
       if (res.ok) {
+        const data = await res.json()
+        setRole(data.role ?? null)
         setUnlocked(true)
         setError(false)
       } else {
@@ -58,7 +68,7 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
 
   const del = () => setPin(p => p.slice(0, -1))
 
-  if (unlocked) return <>{children}</>
+  if (unlocked) return <RoleContext.Provider value={role}>{children}</RoleContext.Provider>
 
   if (checking) {
     return (
