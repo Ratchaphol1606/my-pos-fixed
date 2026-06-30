@@ -226,7 +226,7 @@ export default function SalesPage() {
               </div>
 
               <div className="flex justify-between text-xs text-slate-500 mb-3">
-                <span>{new Date(previewSale.receipt_snapshot.date).toLocaleString('th-TH')}</span>
+                <span>{previewSale.receipt_snapshot.date}</span>
                 <span>#{previewSale.receipt_snapshot.receiptNo}</span>
               </div>
 
