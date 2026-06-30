@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { TrendingUp, Printer } from 'lucide-react'
+import { TrendingUp, Printer, Eye, X } from 'lucide-react'
 import { Sale, ReceiptDetail, Settings } from '@/src/types'
 
 export default function SalesPage() {
@@ -11,6 +11,7 @@ export default function SalesPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [printingId, setPrintingId] = useState<string | null>(null)
   const [realProfit, setRealProfit] = useState(0)
+  const [previewSale, setPreviewSale] = useState<Sale | null>(null)
 
   const PRINT_SERVER = process.env.NEXT_PUBLIC_PRINT_SERVER_URL
 
@@ -105,6 +106,13 @@ export default function SalesPage() {
 
   const dailyTotal = sales.reduce((sum, s) => sum + Number(s.total_amount), 0)
 
+  const paymentLabel = (method: string) => {
+    if (method === 'cash') return 'เงินสด'
+    if (method === 'transfer') return 'โอนเงิน'
+    if (method === 'promptpay') return 'พร้อมเพย์'
+    return method
+  }
+
   return (
     <div className="p-4 md:p-8 bg-slate-50 min-h-screen">
       <h1 className="text-3xl font-bold mb-6 flex items-center gap-2">
@@ -143,6 +151,7 @@ export default function SalesPage() {
             <tr>
               <th className="p-5 text-left">เลขใบเสร็จ</th>
               <th className="p-5 text-right">ยอดชำระ</th>
+              <th className="p-5 text-center">ดูใบเสร็จ</th>
               <th className="p-5 text-center">พิมพ์</th>
             </tr>
           </thead>
@@ -154,6 +163,15 @@ export default function SalesPage() {
                   <td className="p-5 font-bold text black-80">{sale.receipt_no}</td>
                   <td className="p-5 text-right font-bold text-xl text-blue-600">
                     ฿{sale.total_amount.toLocaleString()}
+                  </td>
+                  <td className="p-5 text-center">
+                    <button
+                      onClick={() => setPreviewSale(sale)}
+                      className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all"
+                      title="ดูใบเสร็จ"
+                    >
+                      <Eye size={20} />
+                    </button>
                   </td>
                   <td className="p-5 text-center">
                     <button
@@ -180,6 +198,101 @@ export default function SalesPage() {
           </tbody>
         </table>
       </div>
+
+      {previewSale && previewSale.receipt_snapshot && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setPreviewSale(null)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b">
+              <h2 className="text-lg font-bold">ใบเสร็จ #{previewSale.receipt_snapshot.receiptNo}</h2>
+              <button
+                onClick={() => setPreviewSale(null)}
+                className="p-2 rounded-xl hover:bg-slate-100 text-slate-500"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-5 font-mono text-sm text-slate-700">
+              <div className="text-center mb-3">
+                <p className="font-bold text-black">{settings?.shop_name}</p>
+                {settings?.shop_address && <p className="text-xs">{settings.shop_address}</p>}
+                {settings?.shop_phone && <p className="text-xs">โทร {settings.shop_phone}</p>}
+              </div>
+
+              <div className="flex justify-between text-xs text-slate-500 mb-3">
+                <span>{new Date(previewSale.receipt_snapshot.date).toLocaleString('th-TH')}</span>
+                <span>#{previewSale.receipt_snapshot.receiptNo}</span>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              {previewSale.receipt_snapshot.items.map((item, idx) => (
+                <div key={idx} className="flex justify-between mb-1">
+                  <span className="flex-1">
+                    {item.name} x{item.qty}
+                  </span>
+                  <span>฿{item.subtotal.toLocaleString()}</span>
+                </div>
+              ))}
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              <div className="flex justify-between">
+                <span>ยอดรวม</span>
+                <span>฿{previewSale.receipt_snapshot.subtotal.toLocaleString()}</span>
+              </div>
+              {previewSale.receipt_snapshot.discount > 0 && (
+                <div className="flex justify-between">
+                  <span>ส่วนลด</span>
+                  <span>-฿{previewSale.receipt_snapshot.discount.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-black text-base mt-1">
+                <span>ยอดสุทธิ</span>
+                <span>฿{previewSale.receipt_snapshot.total.toLocaleString()}</span>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 my-2" />
+
+              <div className="flex justify-between">
+                <span>ชำระโดย</span>
+                <span>{paymentLabel(previewSale.receipt_snapshot.paymentMethod)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>รับเงิน</span>
+                <span>฿{previewSale.receipt_snapshot.received.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>เงินทอน</span>
+                <span>฿{previewSale.receipt_snapshot.change.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="p-5 border-t flex gap-3">
+              <button
+                onClick={() => setPreviewSale(null)}
+                className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200"
+              >
+                ปิด
+              </button>
+              <button
+                onClick={() => handlePrint(previewSale)}
+                disabled={printingId === previewSale.id}
+                className="flex-1 py-3 rounded-2xl bg-green-500 text-white font-bold hover:bg-green-600 disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                <Printer size={18} />
+                {printingId === previewSale.id ? 'กำลังพิมพ์...' : 'พิมพ์ใบเสร็จ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
