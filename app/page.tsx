@@ -1,11 +1,11 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag, Camera } from 'lucide-react'
+import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag, Camera, UserSearch, UserPlus, Award, UserX } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import Receipt from './component/Receipt'
 import CameraScanner from './component/CameraScanner'
-import { Product, CartItem, ReceiptDetail, Settings } from '@/src/types'
+import { Product, CartItem, ReceiptDetail, Settings, Customer } from '@/src/types'
 
 export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([])
@@ -22,6 +22,16 @@ export default function POSPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [dailySubsidyUsed, setDailySubsidyUsed] = useState<number>(0)
   const [showCameraScanner, setShowCameraScanner] = useState(false)
+
+  // --- สมาชิก / แต้มสะสม (Membership & Loyalty Points) ---
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [customerResults, setCustomerResults] = useState<Customer[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [showRegisterForm, setShowRegisterForm] = useState(false)
+  const [newCustomerName, setNewCustomerName] = useState('')
+  const [newCustomerPhone, setNewCustomerPhone] = useState('')
+  const [registering, setRegistering] = useState(false)
+  const [redeemPoints, setRedeemPoints] = useState<number>(0)
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -98,6 +108,73 @@ export default function POSPage() {
   }
 
   const totalPages = Math.ceil(totalCount / pageSize)
+
+  // --- สมาชิก / แต้มสะสม ---
+  const searchCustomers = async (term: string) => {
+    setCustomerSearch(term)
+    if (!term.trim()) {
+      setCustomerResults([])
+      return
+    }
+    const { data } = await supabase
+      .from('customers')
+      .select('*')
+      .or(`phone.ilike.%${term}%,name.ilike.%${term}%`)
+      .limit(5)
+    setCustomerResults(data || [])
+  }
+
+  const selectCustomer = (c: Customer) => {
+    setSelectedCustomer(c)
+    setCustomerResults([])
+    setCustomerSearch('')
+    setShowRegisterForm(false)
+  }
+
+  const clearCustomer = () => {
+    setSelectedCustomer(null)
+    setRedeemPoints(0)
+  }
+
+  const handleRegisterCustomer = async () => {
+    const phone = newCustomerPhone.trim()
+    const name = newCustomerName.trim()
+    if (!phone || !name) {
+      alert('กรุณากรอกชื่อและเบอร์โทรศัพท์')
+      return
+    }
+    setRegistering(true)
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .insert({ name, phone, current_points: 0, total_spent: 0 })
+        .select()
+        .single()
+
+      if (error) {
+        if (error.code === '23505') {
+          alert('เบอร์โทรศัพท์นี้เป็นสมาชิกอยู่แล้ว')
+        } else {
+          throw error
+        }
+        return
+      }
+
+      selectCustomer(data)
+      setNewCustomerName('')
+      setNewCustomerPhone('')
+    } catch (err: any) {
+      alert('สมัครสมาชิกไม่สำเร็จ: ' + err.message)
+    } finally {
+      setRegistering(false)
+    }
+  }
+
+  const maskPhone = (phone: string) => {
+    if (!phone || phone.length < 7) return phone
+    return phone.slice(0, 3) + 'XXX' + phone.slice(-4)
+  }
+
 
   // Print via Raspberry Pi print server
   const PRINT_SERVER = process.env.NEXT_PUBLIC_PRINT_SERVER_URL
@@ -255,12 +332,40 @@ export default function POSPage() {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + (item.retail_price * item.qty), 0)
-  const total = Math.max(0, subtotal - discount)
+
+  // แต้มที่ลูกค้าเลือกใช้แลกส่วนลด (REQ-05)
+  const redeemUnit = settings?.redeem_point_use || 0
+  const redeemValue = settings?.redeem_discount_thb || 0
+  const maxRedeemablePoints = selectedCustomer ? selectedCustomer.current_points : 0
+  const pointsDiscount = (redeemUnit > 0 && redeemPoints > 0)
+    ? Math.floor(redeemPoints / redeemUnit) * redeemValue
+    : 0
+  const totalDiscount = discount + pointsDiscount
+  const total = Math.max(0, subtotal - totalDiscount)
   const change = paymentMethod === 'cash' ? receivedAmount - total : 0
 
+  // แต้มที่จะได้รับจากบิลนี้ (REQ-04)
+  const earnUnit = settings?.earn_amount_thb || 0
+  const pointsEarned = (selectedCustomer && earnUnit > 0) ? Math.floor(total / earnUnit) : 0
+
   const handleFinish = async () => {
+    // Validation rules (REQ-05): can't redeem more points than owned,
+    // and discount (including points) can't exceed the bill total.
+    if (selectedCustomer && redeemPoints > maxRedeemablePoints) {
+      alert(`ลูกค้ามีแต้มไม่พอ (มี ${maxRedeemablePoints} แต้ม)`)
+      return
+    }
+    if (totalDiscount > subtotal) {
+      alert('ส่วนลดรวมเกินยอดบิล')
+      return
+    }
+
     try {
       const currentReceiptNo = await generateReceiptNo();
+      const pointsBalanceAfter = selectedCustomer
+        ? selectedCustomer.current_points - redeemPoints + pointsEarned
+        : 0
+
       const snapshot: ReceiptDetail = {
         items: cart.map(item => ({
           name: item.name,
@@ -269,7 +374,7 @@ export default function POSPage() {
           subtotal: item.retail_price * item.qty
         })),
         subtotal,
-        discount,
+        discount: totalDiscount,
         total,
         received: paymentMethod === 'cash' ? receivedAmount : total,
         change,
@@ -277,26 +382,37 @@ export default function POSPage() {
        : paymentMethod === 'transfer' ? 'โอนเงิน/QR' 
         : 'เป๋าตัง'  ,
         date: new Date().toLocaleString('th-TH'),
-        receiptNo: currentReceiptNo
+        receiptNo: currentReceiptNo,
+        ...(selectedCustomer ? {
+          customerName: selectedCustomer.name,
+          customerPhoneMasked: maskPhone(selectedCustomer.phone),
+          pointsEarned,
+          pointsRedeemed: redeemPoints,
+          pointsBalance: pointsBalanceAfter,
+        } : {})
       };
 
-      // Single atomic call: inserts the sale, the line items, and
-      // decrements stock all in one DB transaction. If stock runs out
-      // mid-checkout (e.g. another cashier just sold the last unit),
-      // the whole thing rolls back and nothing is half-written.
+      // Single atomic call: inserts the sale, the line items, decrements
+      // stock, and (if a member is linked) updates their points balance
+      // + logs the point_transactions audit row — all in one DB
+      // transaction. If anything fails mid-checkout, the whole thing
+      // rolls back and nothing is half-written.
       const { error: saleError } = await supabase.rpc('process_sale', {
         p_receipt_no: currentReceiptNo,
         p_total_amount: total,
         p_received_amount: snapshot.received,
         p_change_amount: snapshot.change,
-        p_discount_amount: discount,
+        p_discount_amount: totalDiscount,
         p_payment_method: paymentMethod,
         p_receipt_snapshot: snapshot,
         p_items: cart.map(item => ({
           product_id: item.id,
           quantity: item.qty,
           price_at_sale: item.retail_price
-        }))
+        })),
+        p_customer_id: selectedCustomer?.id || null,
+        p_points_earned: pointsEarned,
+        p_points_redeemed: redeemPoints
       })
 
       if (saleError) throw saleError;
@@ -304,6 +420,8 @@ export default function POSPage() {
       setReceiptDetail(snapshot);
       setCart([]);
       setDiscount(0);
+      setRedeemPoints(0);
+      setSelectedCustomer(null);
       setShowPayModal(false);
       setReceivedAmount(0);
       setShouldPrint(true);
@@ -453,6 +571,127 @@ export default function POSPage() {
           )}
         </div>
         <div className="p-6 border-t bg-gray-50">
+
+          {/* สมาชิก / แต้มสะสม */}
+          <div className="mb-4 pb-4 border-b border-gray-200 border-dashed">
+            {!selectedCustomer ? (
+              <div>
+                <div className="relative">
+                  <UserSearch className="absolute left-3 top-2.5 text-gray-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="ค้นหาสมาชิก (เบอร์โทร/ชื่อ)"
+                    value={customerSearch}
+                    onChange={(e) => searchCustomers(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 ring-blue-400 text-black"
+                  />
+                </div>
+
+                {customerResults.length > 0 && (
+                  <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                    {customerResults.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => selectCustomer(c)}
+                        className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-center justify-between text-sm"
+                      >
+                        <span className="font-bold text-black">{c.name} <span className="text-gray-400 font-normal">{c.phone}</span></span>
+                        <span className="text-blue-600 font-bold flex items-center gap-1"><Award size={12}/>{c.current_points}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {customerSearch && customerResults.length === 0 && !showRegisterForm && (
+                  <button
+                    onClick={() => { setShowRegisterForm(true); setNewCustomerPhone(customerSearch) }}
+                    className="mt-1 w-full text-left px-3 py-2 text-sm text-blue-600 font-bold flex items-center gap-1 hover:bg-blue-50 rounded-xl"
+                  >
+                    <UserPlus size={14}/> ไม่พบสมาชิก — สมัครใหม่
+                  </button>
+                )}
+
+                {showRegisterForm && (
+                  <div className="mt-2 bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+                    <input
+                      type="text"
+                      placeholder="ชื่อ/ชื่อเล่น"
+                      value={newCustomerName}
+                      onChange={(e) => setNewCustomerName(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none text-black"
+                    />
+                    <input
+                      type="text"
+                      placeholder="เบอร์โทรศัพท์"
+                      value={newCustomerPhone}
+                      onChange={(e) => setNewCustomerPhone(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none text-black"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowRegisterForm(false)}
+                        className="flex-1 py-2 text-sm bg-gray-100 text-gray-500 rounded-lg font-bold"
+                      >
+                        ยกเลิก
+                      </button>
+                      <button
+                        onClick={handleRegisterCustomer}
+                        disabled={registering}
+                        className="flex-1 py-2 text-sm bg-blue-600 text-white rounded-lg font-bold disabled:bg-gray-300"
+                      >
+                        {registering ? '...' : 'สมัครสมาชิก'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-blue-50 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="font-bold text-black text-sm">{selectedCustomer.name}</p>
+                    <p className="text-xs text-gray-400">{selectedCustomer.phone}</p>
+                  </div>
+                  <button onClick={clearCustomer} className="p-1.5 text-gray-400 hover:text-red-500" title="ยกเลิกสมาชิก">
+                    <UserX size={16} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between text-sm mb-2">
+                  <span className="flex items-center gap-1 text-blue-600 font-bold"><Award size={14}/> แต้มสะสม</span>
+                  <span className="font-bold text-blue-600">{selectedCustomer.current_points} แต้ม</span>
+                </div>
+                {redeemUnit > 0 && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-gray-500 font-bold">ใช้แต้มแลกส่วนลด</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        max={maxRedeemablePoints}
+                        value={redeemPoints || ''}
+                        placeholder="0"
+                        onChange={(e) => setRedeemPoints(Math.min(Number(e.target.value), maxRedeemablePoints))}
+                        className="w-16 px-2 py-1 text-sm text-right border border-gray-200 rounded-lg outline-none text-black"
+                      />
+                      <button
+                        onClick={() => setRedeemPoints(maxRedeemablePoints)}
+                        className="text-[10px] font-bold text-blue-600 px-1.5 py-1 bg-blue-100 rounded-lg"
+                      >
+                        ทั้งหมด
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {pointsDiscount > 0 && (
+                  <p className="text-xs text-green-600 font-bold mt-1 text-right">-฿{pointsDiscount.toLocaleString()} จากแต้ม</p>
+                )}
+                {pointsEarned > 0 && (
+                  <p className="text-xs text-gray-400 mt-1 text-right">จะได้รับ {pointsEarned} แต้มจากบิลนี้</p>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-between text-gray-500 font-bold">
             <span>รวมเป็นเงิน</span>
             <span>฿{subtotal.toLocaleString()}</span>

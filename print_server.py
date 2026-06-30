@@ -120,6 +120,29 @@ def render_receipt(data: dict) -> Image.Image:
     if method == 'เงินสด':
         row("เงินทอน:", fmt(change_val), f18)
 
+    # Membership / loyalty points (only when a member is linked to the sale)
+    customer_name = data.get('customerName')
+    if customer_name:
+        space(4)
+        divider()
+        space(4)
+
+        text(f"สมาชิก: {customer_name}", f18)
+        phone_masked = data.get('customerPhoneMasked')
+        if phone_masked:
+            text(f"เบอร์: {phone_masked}", f16)
+
+        points_earned   = int(data.get('pointsEarned', 0) or 0)
+        points_redeemed = int(data.get('pointsRedeemed', 0) or 0)
+        points_balance  = data.get('pointsBalance')
+
+        if points_earned > 0:
+            row("แต้มที่ได้รับ:", f"+{points_earned}", f18)
+        if points_redeemed > 0:
+            row("แต้มที่ใช้:", f"-{points_redeemed}", f18)
+        if points_balance is not None:
+            row("แต้มคงเหลือ:", str(int(points_balance)), f20, bold=True)
+
     space(4)
     divider()
     space(4)

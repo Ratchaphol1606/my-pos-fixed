@@ -272,6 +272,38 @@ export default function SalesPage() {
                 <span>เงินทอน</span>
                 <span>฿{previewSale.receipt_snapshot.change.toLocaleString()}</span>
               </div>
+
+              {previewSale.receipt_snapshot.customerName && (
+                <>
+                  <div className="border-t border-dashed border-slate-300 my-2" />
+                  <div className="flex justify-between">
+                    <span>สมาชิก</span>
+                    <span>{previewSale.receipt_snapshot.customerName}</span>
+                  </div>
+                  {previewSale.receipt_snapshot.customerPhoneMasked && (
+                    <div className="flex justify-between">
+                      <span>เบอร์</span>
+                      <span>{previewSale.receipt_snapshot.customerPhoneMasked}</span>
+                    </div>
+                  )}
+                  {!!previewSale.receipt_snapshot.pointsEarned && (
+                    <div className="flex justify-between">
+                      <span>แต้มที่ได้รับ</span>
+                      <span>+{previewSale.receipt_snapshot.pointsEarned}</span>
+                    </div>
+                  )}
+                  {!!previewSale.receipt_snapshot.pointsRedeemed && (
+                    <div className="flex justify-between">
+                      <span>แต้มที่ใช้</span>
+                      <span>-{previewSale.receipt_snapshot.pointsRedeemed}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold">
+                    <span>แต้มคงเหลือ</span>
+                    <span>{previewSale.receipt_snapshot.pointsBalance}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="p-5 border-t flex gap-3">

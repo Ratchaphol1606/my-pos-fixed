@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle } from 'lucide-react'
+import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle, Award } from 'lucide-react'
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>({
@@ -10,7 +10,10 @@ export default function SettingsPage() {
     shop_phone: '',
     promptpay_id: '',
     qr_code_url: '',
-    low_stock_threshold: 5
+    low_stock_threshold: 5,
+    earn_amount_thb: 100,
+    redeem_point_use: 10,
+    redeem_discount_thb: 10
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -76,6 +79,9 @@ export default function SettingsPage() {
           promptpay_id: settings.promptpay_id,
           qr_code_url: qrUrl,
           low_stock_threshold: settings.low_stock_threshold,
+          earn_amount_thb: settings.earn_amount_thb,
+          redeem_point_use: settings.redeem_point_use,
+          redeem_discount_thb: settings.redeem_discount_thb,
           updated_at: new Date().toISOString()
         })
 
@@ -158,6 +164,45 @@ export default function SettingsPage() {
                   onChange={e => setSettings({...settings, low_stock_threshold: Number(e.target.value)})} 
                 />
               </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+              <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Award size={20} className="text-black"/> ระบบสมาชิก / แต้มสะสม</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">ซื้อครบ (บาท) = 1 แต้ม</label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
+                    value={settings.earn_amount_thb}
+                    onChange={e => setSettings({...settings, earn_amount_thb: Number(e.target.value)})}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">ใช้ (แต้ม) เพื่อแลก</label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
+                    value={settings.redeem_point_use}
+                    onChange={e => setSettings({...settings, redeem_point_use: Number(e.target.value)})}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">ได้ส่วนลด (บาท)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
+                    value={settings.redeem_discount_thb}
+                    onChange={e => setSettings({...settings, redeem_discount_thb: Number(e.target.value)})}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 mt-3">
+                ตัวอย่าง: ซื้อครบ {settings.earn_amount_thb || 0} บาท ได้ 1 แต้ม, ใช้ {settings.redeem_point_use || 0} แต้ม แลกส่วนลด {settings.redeem_discount_thb || 0} บาท
+              </p>
             </div>
           </div>
 

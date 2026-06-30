@@ -77,6 +77,37 @@ export default function Receipt({ detail, settings }: ReceiptProps) {
         )}
       </div>
 
+      {detail.customerName && (
+        <div className="border-t border-dashed mt-2 pt-2 space-y-1">
+          <div className="flex justify-between">
+            <span>สมาชิก:</span>
+            <span>{detail.customerName}</span>
+          </div>
+          {detail.customerPhoneMasked && (
+            <div className="flex justify-between">
+              <span>เบอร์:</span>
+              <span>{detail.customerPhoneMasked}</span>
+            </div>
+          )}
+          {(detail.pointsEarned ?? 0) > 0 && (
+            <div className="flex justify-between">
+              <span>แต้มที่ได้รับ:</span>
+              <span>+{formatNum(detail.pointsEarned)}</span>
+            </div>
+          )}
+          {(detail.pointsRedeemed ?? 0) > 0 && (
+            <div className="flex justify-between">
+              <span>แต้มที่ใช้:</span>
+              <span>-{formatNum(detail.pointsRedeemed)}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-bold">
+            <span>แต้มคงเหลือ:</span>
+            <span>{formatNum(detail.pointsBalance)}</span>
+          </div>
+        </div>
+      )}
+
       <div className="text-center mt-6 text-[9px] border-t border-dashed pt-4">
         <p>ชำระด้วย: {detail.paymentMethod || '-'}</p>
         <p className="mt-2">*** ขอบคุณที่ใช้บริการ ***</p>

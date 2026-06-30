@@ -23,6 +23,30 @@ export interface Sale {
   payment_method: string;
   created_at: string;
   receipt_snapshot?: ReceiptDetail;
+  customer_id?: string | null;
+  points_earned?: number;
+  points_redeemed?: number;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string | null;
+  address?: string | null;
+  note?: string | null;
+  total_spent: number;
+  current_points: number;
+  created_at: string;
+}
+
+export interface PointTransaction {
+  id: string;
+  customer_id: string;
+  sale_id: string | null;
+  type: 'earn' | 'redeem';
+  points_change: number;
+  created_at: string;
 }
 
 export interface ReceiptItem {
@@ -42,6 +66,11 @@ export interface ReceiptDetail {
   paymentMethod: string;
   date: string;
   receiptNo: string;
+  customerName?: string;
+  customerPhoneMasked?: string;
+  pointsEarned?: number;
+  pointsRedeemed?: number;
+  pointsBalance?: number;
 }
 
 export interface Settings {
@@ -51,4 +80,7 @@ export interface Settings {
   promptpay_id: string;
   qr_code_url: string | null;
   low_stock_threshold: number;
+  earn_amount_thb: number;
+  redeem_point_use: number;
+  redeem_discount_thb: number;
 }
