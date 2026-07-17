@@ -40,6 +40,7 @@ export default function ReportsPage() {
   // --- New: trend, comparisons, peak times, payment mix, slow movers ---
   const [trendRange, setTrendRange] = useState<30 | 90>(30)
   const [trendData, setTrendData] = useState<{ date: string; revenue: number; profit: number }[]>([])
+  const [peakRange, setPeakRange] = useState<30 | 90>(90)
   const [dowData, setDowData] = useState<{ day: string; revenue: number; count: number }[]>([])
   const [hourData, setHourData] = useState<{ hour: string; revenue: number; count: number }[]>([])
   const [paymentMix, setPaymentMix] = useState<{ method: string; revenue: number; count: number }[]>([])
@@ -60,6 +61,11 @@ export default function ReportsPage() {
   useEffect(() => {
     computeTrend(allSalesRaw, trendRange, productCostMap)
   }, [trendRange, allSalesRaw, productCostMap])
+
+  // Peak times (busiest days / peak hours) recompute independently on their own range toggle
+  useEffect(() => {
+    computePeakTimes(allSalesRaw, peakRange)
+  }, [peakRange, allSalesRaw])
 
   const fetchFinancialDashboard = async () => {
     setLoading(true)
@@ -201,29 +207,8 @@ export default function ReportsPage() {
             .sort((a, b) => b.profit - a.profit).slice(0, 5)
         )
 
-        // Peak times: day-of-week + hour-of-day, based on last 90 days for a current-but-stable sample
-        const ninetyDaysAgo = new Date(now.getTime() - (90 * 24 * 60 * 60 * 1000)).toISOString()
-        const last90Sales = (salesData || []).filter(s => s.created_at >= ninetyDaysAgo)
-
-        const dowAgg: Record<number, { revenue: number; count: number }> = {}
-        const hourAgg: Record<number, { revenue: number; count: number }> = {}
-        last90Sales.forEach((s: any) => {
-          const d = new Date(s.created_at)
-          const dow = d.getDay()
-          const hr = d.getHours()
-          if (!dowAgg[dow]) dowAgg[dow] = { revenue: 0, count: 0 }
-          if (!hourAgg[hr]) hourAgg[hr] = { revenue: 0, count: 0 }
-          dowAgg[dow].revenue += Number(s.total_amount) || 0
-          dowAgg[dow].count += 1
-          hourAgg[hr].revenue += Number(s.total_amount) || 0
-          hourAgg[hr].count += 1
-        })
-        setDowData(DOW_LABELS_TH.map((label, i) => ({
-          day: label, revenue: dowAgg[i]?.revenue || 0, count: dowAgg[i]?.count || 0
-        })))
-        setHourData(Array.from({ length: 24 }, (_, h) => ({
-          hour: `${h}:00`, revenue: hourAgg[h]?.revenue || 0, count: hourAgg[h]?.count || 0
-        })).filter(h => h.count > 0 || (h.hour >= '07:00' && h.hour <= '22:00')))
+        // Peak times (busiest days / peak hours) are computed by a separate effect
+        // driven by peakRange, so they can toggle 30D/90D without refetching.
 
         // Payment method mix, this month
         const payAgg: Record<string, { revenue: number; count: number }> = {}
@@ -292,6 +277,36 @@ export default function ReportsPage() {
       result.push({ date: label, revenue: byDate[key]?.revenue || 0, profit: byDate[key]?.profit || 0 })
     }
     setTrendData(result)
+  }
+
+  // Peak times: day-of-week + hour-of-day, over a toggleable window (30D/90D).
+  // Bar value is transaction COUNT (footfall), since that's what "when do customers
+  // come" actually means — revenue kept as secondary context in the tooltip.
+  const computePeakTimes = (salesData: any[], days: number) => {
+    if (!salesData || salesData.length === 0) { setDowData([]); setHourData([]); return }
+    const now = new Date()
+    const cutoff = new Date(now.getTime() - (days * 24 * 60 * 60 * 1000)).toISOString()
+    const rangeSales = salesData.filter(s => s.created_at >= cutoff)
+
+    const dowAgg: Record<number, { revenue: number; count: number }> = {}
+    const hourAgg: Record<number, { revenue: number; count: number }> = {}
+    rangeSales.forEach((s: any) => {
+      const d = new Date(s.created_at)
+      const dow = d.getDay()
+      const hr = d.getHours()
+      if (!dowAgg[dow]) dowAgg[dow] = { revenue: 0, count: 0 }
+      if (!hourAgg[hr]) hourAgg[hr] = { revenue: 0, count: 0 }
+      dowAgg[dow].revenue += Number(s.total_amount) || 0
+      dowAgg[dow].count += 1
+      hourAgg[hr].revenue += Number(s.total_amount) || 0
+      hourAgg[hr].count += 1
+    })
+    setDowData(DOW_LABELS_TH.map((label, i) => ({
+      day: label, revenue: dowAgg[i]?.revenue || 0, count: dowAgg[i]?.count || 0
+    })))
+    setHourData(Array.from({ length: 24 }, (_, h) => ({
+      hour: `${h}:00`, revenue: hourAgg[h]?.revenue || 0, count: hourAgg[h]?.count || 0
+    })).filter(h => h.count > 0 || (h.hour >= '07:00' && h.hour <= '22:00')))
   }
 
   const renderCalendar = () => {
@@ -464,13 +479,27 @@ export default function ReportsPage() {
             </div>
 
             {/* Peak Times: Day of Week + Hour of Day */}
+            <div className="flex items-center justify-between px-1">
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Busiest Days & Peak Hours — by number of sales</p>
+              <div className="flex gap-2">
+                {[30, 90].map(r => (
+                  <button key={r} onClick={() => setPeakRange(r as 30 | 90)}
+                    className={`px-4 py-2 rounded-xl text-xs font-black transition-colors ${peakRange === r ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
+                    {r}D
+                  </button>
+                ))}
+              </div>
+            </div>
+            {peakRange === 30 && (
+              <p className="text-amber-500 text-[10px] font-bold px-1 -mt-4">⚠ 30-day view covers only ~4 of each weekday/hour — pattern may be noisy. 90D is more stable.</p>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-white rounded-[3rem] p-8 border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="bg-indigo-100 p-3 rounded-2xl text-indigo-600"><CalendarDays size={20}/></div>
                   <div>
                     <h3 className="font-black text-slate-800 text-sm uppercase tracking-tight">Busiest Days</h3>
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Last 90 Days</p>
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Last {peakRange} Days · By Transactions</p>
                   </div>
                 </div>
                 <div className="h-56">
@@ -478,9 +507,12 @@ export default function ReportsPage() {
                     <BarChart data={dowData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                      <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(v) => `฿${(v / 1000).toFixed(0)}k`} />
-                      <Tooltip formatter={(v: any) => `฿${Number(v).toLocaleString()}` as any} contentStyle={{ borderRadius: 16, border: '1px solid #f1f5f9', fontSize: 12 }} />
-                      <Bar dataKey="revenue" fill="#6366f1" radius={[8, 8, 0, 0]} />
+                      <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                      <Tooltip
+                        formatter={((v: any, name: any, entry: any) => [`${v} sales (฿${Number(entry.payload.revenue).toLocaleString()})`, 'Transactions']) as any}
+                        contentStyle={{ borderRadius: 16, border: '1px solid #f1f5f9', fontSize: 12 }}
+                      />
+                      <Bar dataKey="count" fill="#6366f1" radius={[8, 8, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -491,7 +523,7 @@ export default function ReportsPage() {
                   <div className="bg-cyan-100 p-3 rounded-2xl text-cyan-600"><Clock size={20}/></div>
                   <div>
                     <h3 className="font-black text-slate-800 text-sm uppercase tracking-tight">Peak Hours</h3>
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Last 90 Days</p>
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Last {peakRange} Days · By Transactions</p>
                   </div>
                 </div>
                 <div className="h-56">
@@ -499,12 +531,16 @@ export default function ReportsPage() {
                     <BarChart data={hourData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis dataKey="hour" tick={{ fontSize: 9, fill: '#94a3b8' }} interval={2} />
-                      <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(v) => `฿${(v / 1000).toFixed(0)}k`} />
-                      <Tooltip formatter={(v: any) => `฿${Number(v).toLocaleString()}` as any} contentStyle={{ borderRadius: 16, border: '1px solid #f1f5f9', fontSize: 12 }} />
-                      <Bar dataKey="revenue" fill="#06b6d4" radius={[8, 8, 0, 0]} />
+                      <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                      <Tooltip
+                        formatter={((v: any, name: any, entry: any) => [`${v} sales (฿${Number(entry.payload.revenue).toLocaleString()})`, 'Transactions']) as any}
+                        contentStyle={{ borderRadius: 16, border: '1px solid #f1f5f9', fontSize: 12 }}
+                      />
+                      <Bar dataKey="count" fill="#06b6d4" radius={[8, 8, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+
               </div>
             </div>
 
