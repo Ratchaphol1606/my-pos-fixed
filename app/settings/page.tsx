@@ -1,8 +1,39 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle, Award, Users, Search, Edit3, X } from 'lucide-react'
+import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle, Award, Users, Search, Edit3, X, ChevronDown } from 'lucide-react'
 import { Customer } from '@/src/types'
+
+// การ์ดที่พับ/ขยายได้ — โชว์แค่หัวข้อ กดถึงเห็นเนื้อหา
+function Section({
+  title,
+  icon,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  title: string
+  icon: React.ReactNode
+  isOpen: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between p-8 text-left"
+      >
+        <h2 className="text-xl font-bold flex items-center gap-2">{icon} {title}</h2>
+        <ChevronDown
+          size={22}
+          className={`text-slate-400 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {isOpen && <div className="px-8 pb-8 -mt-2">{children}</div>}
+    </div>
+  )
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>({
@@ -20,6 +51,17 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  // ส่วนไหนกางอยู่บ้าง — ปิดหมดตอนเริ่ม เพื่อความเรียบร้อย
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    store: false,
+    stock: false,
+    loyalty: false,
+    qr: false,
+    members: false,
+  })
+  const toggleSection = (key: string) =>
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
 
   // --- จัดการสมาชิก (Member Management) ---
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -187,9 +229,12 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* ข้อมูลร้าน */}
           <div className="md:col-span-2 space-y-6">
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-              <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Store size={20} className="text-black"/> ข้อมูลร้านค้า</h2>
-              
+            <Section
+              title="ข้อมูลร้านค้า"
+              icon={<Store size={20} className="text-black"/>}
+              isOpen={openSections.store}
+              onToggle={() => toggleSection('store')}
+            >
               <div className="space-y-4">
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">ชื่อร้าน</label>
@@ -228,10 +273,14 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-            </div>
+            </Section>
 
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-              <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><AlertTriangle size={20} className="text-black"/> ระบบสต็อก</h2>
+            <Section
+              title="ระบบสต็อก"
+              icon={<AlertTriangle size={20} className="text-black"/>}
+              isOpen={openSections.stock}
+              onToggle={() => toggleSection('stock')}
+            >
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">แจ้งเตือนสต็อกต่ำเมื่อเหลือน้อยกว่า (ชิ้น)</label>
                 <input 
@@ -241,10 +290,15 @@ export default function SettingsPage() {
                   onChange={e => setSettings({...settings, low_stock_threshold: Number(e.target.value)})} 
                 />
               </div>
-            </div>
+            </Section>
+            
 
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-              <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Award size={20} className="text-black"/> ระบบสมาชิก / แต้มสะสม</h2>
+            <Section
+              title="ระบบสมาชิก / แต้มสะสม"
+              icon={<Award size={20} className="text-black"/>}
+              isOpen={openSections.loyalty}
+              onToggle={() => toggleSection('loyalty')}
+            >
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">ซื้อครบ (บาท) = 1 แต้ม</label>
@@ -280,47 +334,15 @@ export default function SettingsPage() {
               <p className="text-xs text-slate-400 mt-3">
                 ตัวอย่าง: ซื้อครบ {settings.earn_amount_thb || 0} บาท ได้ 1 แต้ม, ใช้ {settings.redeem_point_use || 0} แต้ม แลกส่วนลด {settings.redeem_discount_thb || 0} บาท
               </p>
-            </div>
-          </div>
-
-          {/* อัปโหลด QR Code */}
-          <div className="space-y-6">
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col items-center">
-              <h2 className="text-xl font-bold mb-6 w-full text-center text-black">QR Code รับเงิน</h2>
-              
-              <div className="w-full aspect-square bg-slate-100 rounded-3xl mb-4 overflow-hidden border-2 border-dashed border-slate-200 flex items-center justify-center relative group">
-                {previewUrl ? (
-                  <img src={previewUrl} alt="QR Preview" className="w-full h-full object-contain" />
-                ) : (
-                  <div className="text-slate-400 text-center p-4">
-                    <Upload size={40} className="mx-auto mb-2 opacity-20" />
-                    <p className="text-xs font-bold uppercase tracking-widest">ยังไม่มีรูปภาพ</p>
-                  </div>
-                )}
-                <label className="absolute inset-0 bg-blue-600/80 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer font-bold">
-                  <Upload size={24} className="mr-2" /> เปลี่ยนรูปภาพ
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
-                </label>
-              </div>
-              <p className="text-[10px] text-slate-400 text-center leading-tight font-medium">
-                แนะนำเป็นรูปภาพสี่เหลี่ยมจตุรัส<br/>(PNG หรือ JPG)
-              </p>
-            </div>
-
-            <button 
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-blue-200 flex items-center justify-center gap-2 active:scale-95 transition-all disabled:bg-slate-300"
-            >
-              {saving ? 'กำลังบันทึก...' : <><Save size={24}/> SAVE SETTINGS</>}
-            </button>
-          </div>
-        </div>
-
-        {/* --- จัดการสมาชิก --- */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 mt-8">
-          <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Users size={20} className="text-black"/> จัดการสมาชิก</h2>
-
+            </Section>
+      
+           { /* -- - จัดการสมาชิก --- */}
+        <Section
+          title="จัดการสมาชิก"
+          icon={<Users size={20} className="text-black"/>}
+          isOpen={openSections.members}
+          onToggle={() => toggleSection('members')}
+        >
           <div className="relative mb-6">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
             <input
@@ -374,7 +396,49 @@ export default function SettingsPage() {
               </tbody>
             </table>
           </div>
+        </Section>
+        
+          {/* อัปโหลด QR Code */}
+            <Section
+              title="QR Code รับเงิน"
+              icon={<CreditCard size={20} className="text-black"/>}
+              isOpen={openSections.qr}
+              onToggle={() => toggleSection('qr')}
+            >
+              <div className="flex flex-col items-center">
+              <div className="w-full aspect-square bg-slate-100 rounded-3xl mb-4 overflow-hidden border-2 border-dashed border-slate-200 flex items-center justify-center relative group">
+                {previewUrl ? (
+                  <img src={previewUrl} alt="QR Preview" className="w-full h-full object-contain" />
+                ) : (
+                  <div className="text-slate-400 text-center p-4">
+                    <Upload size={40} className="mx-auto mb-2 opacity-20" />
+                    <p className="text-xs font-bold uppercase tracking-widest">ยังไม่มีรูปภาพ</p>
+                  </div>
+                )}
+                <label className="absolute inset-0 bg-blue-600/80 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer font-bold">
+                  <Upload size={24} className="mr-2" /> เปลี่ยนรูปภาพ
+                  <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                </label>
+              </div>
+              <p className="text-[10px] text-slate-400 text-center leading-tight font-medium">
+                แนะนำเป็นรูปภาพสี่เหลี่ยมจตุรัส<br/>(PNG หรือ JPG)
+              </p>
+              </div>
+            </Section>
+
+         
+            <button 
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-blue-200 flex items-center justify-center gap-2 active:scale-95 transition-all disabled:bg-slate-300"
+            >
+              {saving ? 'กำลังบันทึก...' : <><Save size={24}/> SAVE SETTINGS</>}
+            </button>
         </div>
+
+        </div>
+
+        
       </div>
 
       {editingCustomer && (
