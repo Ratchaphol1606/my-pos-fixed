@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Lock, Delete } from 'lucide-react'
 import { RoleContext, Role } from '@/src/lib/RoleContext'
+import { supabase } from '@/src/lib/supabase'
 
 export default function PinLock({ children }: { children: React.ReactNode }) {
   const [unlocked, setUnlocked] = useState(false)
@@ -11,6 +12,15 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
   const [error, setError]       = useState(false)
   const [shake, setShake]       = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [shopName, setShopName] = useState('บุญชอบเครื่องครัว')
+
+  useEffect(() => {
+    const fetchShopName = async () => {
+      const { data } = await supabase.from('settings').select('shop_name').eq('id', 1).single()
+      if (data?.shop_name) setShopName(data.shop_name)
+    }
+    fetchShopName()
+  }, [])
 
   // Ask the server if we already have a valid session cookie.
   // The cookie is httpOnly, so JS can't read it directly — we just
@@ -90,7 +100,7 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
 
           {/* Title */}
           <div className="text-center">
-            <h1 className="text-white text-2xl font-black">บุญชอบเครื่องครัว</h1>
+            <h1 className="text-white text-2xl font-black">{shopName}</h1>
             <p className="text-blue-200 text-sm mt-1">กรุณาใส่รหัส PIN</p>
           </div>
 
