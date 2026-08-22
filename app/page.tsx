@@ -454,7 +454,7 @@ export default function POSPage() {
       
       {/* ฝั่งซ้าย: ค้นหาและเลือกสินค้า */}
       <div className="flex-1 flex flex-col gap-2 print:hidden min-w-0 overflow-hidden">
-        <div className="relative flex gap-2">
+        <div className="relative flex gap-2 mt-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 text-black-400" size={18} />
             <input 
