@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/src/lib/supabase'
 import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag, Camera, UserSearch, UserPlus, Award, UserX } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import generatePayload from 'promptpay-qr'
 import Receipt from './component/Receipt'
 import CameraScanner from './component/CameraScanner'
 import { Product, CartItem, ReceiptDetail, Settings, Customer } from '@/src/types'
@@ -791,15 +792,22 @@ export default function POSPage() {
               </div>
             ) : paymentMethod === 'transfer' ? (
               <div className="flex flex-col items-center p-6 bg-gray-50 rounded-3xl mb-6 animate-in zoom-in duration-300">
-                {settings?.qr_code_url ? (
-                  <div className="relative w-48 h-48">
-                    <img src={settings.qr_code_url} alt="Shop QR" className="w-full h-full object-contain" />
+                {settings?.promptpay_id ? (
+                  <div className="relative w-48 h-48 bg-white p-2 rounded-xl">
+                    <QRCodeSVG
+                      value={generatePayload(settings.promptpay_id, { amount: total })}
+                      size={176}
+                      className="w-full h-full"
+                    />
                     <div className="absolute inset-0 border-4 border-blue-500/20 rounded-xl"></div>
                   </div>
                 ) : (
-                  <QRCodeSVG value={`https://promptpay.io/${settings?.promptpay_id || '0000000000'}/${total}.png`} size={180} />
+                  <p className="text-red-500 text-sm font-bold text-center px-4">
+                    ยังไม่ได้ตั้งค่าเลข PromptPay<br/>กรุณาตั้งค่าที่หน้า Settings
+                  </p>
                 )}
                 <p className="mt-4 font-bold text-blue-600 uppercase tracking-widest text-sm">สแกนเพื่อชำระเงิน</p>
+                <p className="text-gray-400 text-xs mt-1">ยอดชำระ ฿{total.toLocaleString()}</p>
               </div>
             ) : paymentMethod === 'wallet' ? (
               (() => {
