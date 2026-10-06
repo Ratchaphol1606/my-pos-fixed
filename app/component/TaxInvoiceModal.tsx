@@ -199,7 +199,7 @@ export default function TaxInvoiceModal({ sale, settings, onClose }: TaxInvoiceM
                 <div className="border-t border-slate-400 pt-2">ผู้รับสินค้า / วันที่</div>
               </div>
               <div>
-                <div className="border-t border-slate-400 pt-2">รับเงินจาก</div>
+                <div className="border-t border-slate-400 pt-2">ผู้รับเงิน</div>
               </div>
             </div>
           </div>
