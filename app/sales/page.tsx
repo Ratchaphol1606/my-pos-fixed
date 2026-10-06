@@ -1,8 +1,9 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { TrendingUp, Printer, Eye, X } from 'lucide-react'
+import { TrendingUp, Printer, Eye, X, FileText } from 'lucide-react'
 import { Sale, ReceiptDetail, Settings } from '@/src/types'
+import TaxInvoiceModal from '@/app/component/TaxInvoiceModal'
 
 export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([])
@@ -12,6 +13,7 @@ export default function SalesPage() {
   const [printingId, setPrintingId] = useState<string | null>(null)
   const [realProfit, setRealProfit] = useState(0)
   const [previewSale, setPreviewSale] = useState<Sale | null>(null)
+  const [invoiceSale, setInvoiceSale] = useState<Sale | null>(null)
 
   const PRINT_SERVER = process.env.NEXT_PUBLIC_PRINT_SERVER_URL
 
@@ -153,6 +155,7 @@ export default function SalesPage() {
               <th className="p-5 text-right">ยอดชำระ</th>
               <th className="p-5 text-center">ดูใบเสร็จ</th>
               <th className="p-5 text-center">พิมพ์</th>
+              <th className="p-5 text-center">ใบกำกับภาษี</th>
             </tr>
           </thead>
           <tbody>
@@ -186,11 +189,21 @@ export default function SalesPage() {
                       }
                     </button>
                   </td>
+                  <td className="p-5 text-center">
+                    <button
+                      onClick={() => setInvoiceSale(sale)}
+                      disabled={!sale.receipt_snapshot}
+                      className="p-3 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all disabled:opacity-40"
+                      title="ใบกำกับภาษี / PDF"
+                    >
+                      <FileText size={20} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             {sales.length === 0 && (
               <tr>
-                <td colSpan={3} className="p-10 text-center text-slate-400 font-bold">
+                <td colSpan={4} className="p-10 text-center text-slate-400 font-bold">
                   ไม่มีรายการขายในวันนี้
                 </td>
               </tr>
@@ -324,6 +337,14 @@ export default function SalesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {invoiceSale && (
+        <TaxInvoiceModal
+          sale={invoiceSale}
+          settings={settings}
+          onClose={() => setInvoiceSale(null)}
+        />
       )}
     </div>
   )

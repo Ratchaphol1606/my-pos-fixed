@@ -45,7 +45,8 @@ export default function SettingsPage() {
     low_stock_threshold: 5,
     earn_amount_thb: 100,
     redeem_point_use: 10,
-    redeem_discount_thb: 10
+    redeem_discount_thb: 10,
+    vat_enabled: false
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -201,6 +202,7 @@ export default function SettingsPage() {
           earn_amount_thb: settings.earn_amount_thb,
           redeem_point_use: settings.redeem_point_use,
           redeem_discount_thb: settings.redeem_discount_thb,
+          vat_enabled: settings.vat_enabled,
           updated_at: new Date().toISOString()
         })
 
@@ -272,6 +274,18 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
+
+                <label className="flex items-center gap-3 p-4 border border-slate-200 rounded-2xl cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="w-5 h-5 accent-blue-500"
+                    checked={!!settings.vat_enabled}
+                    onChange={e => setSettings({...settings, vat_enabled: e.target.checked})}
+                  />
+                  <span className="text-sm font-bold text-black">
+                    เปิดใช้งานภาษีมูลค่าเพิ่ม (VAT 7%) บนใบกำกับภาษี
+                  </span>
+                </label>
               </div>
             </Section>
 

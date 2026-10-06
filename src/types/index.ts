@@ -83,4 +83,5 @@ export interface Settings {
   earn_amount_thb: number;
   redeem_point_use: number;
   redeem_discount_thb: number;
+  vat_enabled?: boolean; 
 }

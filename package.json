@@ -11,7 +11,9 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.91.1",
     "@zxing/library": "^0.23.0",
+    "html2canvas-pro": "^1.4.1",
     "jsbarcode": "^3.12.3",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.563.0",
     "next": "^16.3.2",
     "promptpay-qr": "^0.5.0",
