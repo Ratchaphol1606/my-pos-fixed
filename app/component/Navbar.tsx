@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck } from 'lucide-react'
+import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck, FlaskConical } from 'lucide-react'
 import { useRole } from '@/src/lib/RoleContext'
 import { supabase } from '@/src/lib/supabase'
 
@@ -26,6 +26,7 @@ export default function Navbar() {
     { name: 'รายงานสรุป', href: '/reports', icon: <BarChart3 size={20} />, adminOnly: true },
     { name: 'ภาษี', href: '/taxReports', icon: <DollarSignIcon size={20} />, adminOnly: true },
     { name: 'ตั้งค่า', href: '/settings', icon: <Settings size={20} />, adminOnly: true },
+    { name: 'ทดสอบ', href: '/test', icon: <FlaskConical size={20} />, adminOnly: true },
   ].filter(item => !item.adminOnly || role === 'admin')
 
   const [showConfirm, setShowConfirm] = useState(false)

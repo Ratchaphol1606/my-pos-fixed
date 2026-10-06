@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 // is just UX; this is the real enforcement layer.
 //
 // Paths an 'admin' role can access that a 'cashier' role cannot:
-const ADMIN_ONLY_PREFIXES = ['/settings', '/reports', '/taxReports']
+const ADMIN_ONLY_PREFIXES = ['/settings', '/reports', '/taxReports', '/test']
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -31,5 +31,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/settings/:path*', '/reports/:path*', '/taxReports/:path*'],
+  matcher: ['/settings/:path*', '/reports/:path*', '/taxReports/:path*', '/test/:path*'],
 }
