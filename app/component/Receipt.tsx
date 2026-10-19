@@ -1,5 +1,6 @@
 "use client"
 import { ReceiptDetail, Settings } from '@/src/types'
+import { getPrintConfig } from '@/src/lib/print'
 
 interface ReceiptProps {
   detail: ReceiptDetail | null;
@@ -9,6 +10,8 @@ interface ReceiptProps {
 export default function Receipt({ detail, settings }: ReceiptProps) {
   if (!detail) return null;
 
+  const contentWidthMm = getPrintConfig(settings).contentWidthMm;
+
   // Helper to safely format numbers
   const formatNum = (val: any) => {
     const n = Number(val);
@@ -16,7 +19,7 @@ export default function Receipt({ detail, settings }: ReceiptProps) {
   };
 
   return (
-    <div className="receipt-container pos-receipt text-black text-[11px] font-mono w-full px-[3mm] pt-[3mm] pb-[5mm] bg-white mx-auto" style={{ width: '48mm' }}>
+    <div className="receipt-container pos-receipt text-black text-[11px] font-mono w-full px-[3mm] pt-[3mm] pb-[5mm] bg-white mx-auto" style={{ width: `${contentWidthMm}mm` }}>
       <div className="text-center mb-4">
         <h2 className="text-sm font-bold uppercase">{settings?.shop_name || 'บุญชอบเครื่องครัว'}</h2>
         <p className="text-[9px]">{settings?.shop_address || '-'}</p>

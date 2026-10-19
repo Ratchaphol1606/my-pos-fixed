@@ -1,8 +1,25 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle, Award, Users, Search, Edit3, X, ChevronDown } from 'lucide-react'
-import { Customer } from '@/src/types'
+import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle, Award, Users, Search, Edit3, X, ChevronDown, Printer } from 'lucide-react'
+import { Customer, ReceiptDetail } from '@/src/types'
+import Receipt from '@/app/component/Receipt'
+import { printReceipt } from '@/src/lib/print'
+
+const TEST_RECEIPT: ReceiptDetail = {
+  items: [
+    { name: 'ทดสอบสินค้า A', price: 100, qty: 1, subtotal: 100 },
+    { name: 'ทดสอบสินค้า B', price: 50, qty: 2, subtotal: 100 },
+  ],
+  subtotal: 200,
+  discount: 0,
+  total: 200,
+  received: 200,
+  change: 0,
+  paymentMethod: 'เงินสด',
+  date: new Date().toLocaleString('th-TH'),
+  receiptNo: 'TEST-PRINT',
+}
 
 // การ์ดที่พับ/ขยายได้ — โชว์แค่หัวข้อ กดถึงเห็นเนื้อหา
 function Section({
@@ -46,8 +63,12 @@ export default function SettingsPage() {
     earn_amount_thb: 100,
     redeem_point_use: 10,
     redeem_discount_thb: 10,
-    vat_enabled: false
+    vat_enabled: false,
+    print_mode: 'server',
+    print_server_url: '',
+    paper_width_mm: 58
   })
+  const [testingPrint, setTestingPrint] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [file, setFile] = useState<File | null>(null)
@@ -57,6 +78,7 @@ export default function SettingsPage() {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     store: false,
     stock: false,
+    printer: false,
     loyalty: false,
     qr: false,
     members: false,
@@ -158,6 +180,28 @@ export default function SettingsPage() {
     }
   }
 
+  // Tests with the values currently in the form (no need to save first)
+  const handleTestPrint = async () => {
+    setTestingPrint(true)
+    try {
+      const via = await printReceipt(
+        settings,
+        {
+          ...TEST_RECEIPT,
+          shopName: settings.shop_name || 'TEST',
+          shopAddress: settings.shop_address || '',
+          shopPhone: settings.shop_phone || ''
+        },
+        { fallbackToBrowser: false }
+      )
+      if (via === 'server') alert('✅ ส่งคำสั่งพิมพ์ไปที่เครื่องพิมพ์แล้ว')
+    } catch (error: any) {
+      alert('❌ พิมพ์ไม่สำเร็จ: ' + error.message)
+    } finally {
+      setTestingPrint(false)
+    }
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0]
@@ -203,6 +247,9 @@ export default function SettingsPage() {
           redeem_point_use: settings.redeem_point_use,
           redeem_discount_thb: settings.redeem_discount_thb,
           vat_enabled: settings.vat_enabled,
+          print_mode: settings.print_mode || 'server',
+          print_server_url: (settings.print_server_url || '').trim().replace(/\/+$/, '') || null,
+          paper_width_mm: settings.paper_width_mm === 80 ? 80 : 58,
           updated_at: new Date().toISOString()
         })
 
@@ -305,7 +352,68 @@ export default function SettingsPage() {
                 />
               </div>
             </Section>
-            
+
+            <Section
+              title="เครื่องพิมพ์ใบเสร็จ"
+              icon={<Printer size={20} className="text-black"/>}
+              isOpen={openSections.printer}
+              onToggle={() => toggleSection('printer')}
+            >
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">วิธีพิมพ์</label>
+                  <select
+                    className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500 bg-white"
+                    value={settings.print_mode || 'server'}
+                    onChange={e => setSettings({...settings, print_mode: e.target.value})}
+                  >
+                    <option value="server">Print server (เช่น Raspberry Pi / คอมในร้าน)</option>
+                    <option value="browser">พิมพ์ผ่านเบราว์เซอร์ (เครื่องพิมพ์ที่ต่อกับอุปกรณ์นี้)</option>
+                  </select>
+                </div>
+
+                {(settings.print_mode || 'server') === 'server' && (
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">Print server URL</label>
+                    <input
+                      placeholder="https://print.example.com"
+                      className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500"
+                      value={settings.print_server_url || ''}
+                      onChange={e => setSettings({...settings, print_server_url: e.target.value})}
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1.5">
+                      ถ้าเว้นว่าง ระบบจะใช้ค่า NEXT_PUBLIC_PRINT_SERVER_URL เดิม (ถ้ามี)
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">ขนาดกระดาษ</label>
+                  <select
+                    className="w-full p-4 border border-slate-200 rounded-2xl outline-none text-black focus:border-blue-500 bg-white"
+                    value={settings.paper_width_mm === 80 ? 80 : 58}
+                    onChange={e => setSettings({...settings, paper_width_mm: Number(e.target.value)})}
+                  >
+                    <option value={58}>58 มม.</option>
+                    <option value={80}>80 มม.</option>
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleTestPrint}
+                  disabled={testingPrint}
+                  className="w-full py-4 bg-slate-100 text-slate-700 rounded-2xl font-bold hover:bg-slate-200 disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  <Printer size={18} />
+                  {testingPrint ? 'กำลังพิมพ์...' : 'ทดสอบพิมพ์'}
+                </button>
+                <p className="text-[10px] text-slate-400">
+                  ทดสอบด้วยค่าที่กรอกอยู่ตอนนี้ (ยังไม่ต้องกดบันทึก) แต่ต้องกด SAVE SETTINGS เพื่อใช้งานจริง
+                </p>
+              </div>
+            </Section>
+
 
             <Section
               title="ระบบสมาชิก / แต้มสะสม"
@@ -453,6 +561,11 @@ export default function SettingsPage() {
         </div>
 
         
+      </div>
+
+      {/* Sample receipt used only by "ทดสอบพิมพ์" in browser mode */}
+      <div className="hidden print:block fixed top-0 left-0 bg-white">
+        <Receipt detail={TEST_RECEIPT} settings={settings} />
       </div>
 
       {editingCustomer && (

@@ -7,6 +7,7 @@ import generatePayload from 'promptpay-qr'
 import Receipt from './Receipt'
 import CameraScanner from './CameraScanner'
 import { Product, CartItem, ReceiptDetail, Settings, Customer } from '@/src/types'
+import { printReceipt } from '@/src/lib/print'
 
 export default function POSScreen({ testMode = false }: { testMode?: boolean }) {
   const [products, setProducts] = useState<Product[]>([])
@@ -182,37 +183,27 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   }
 
 
-  // Print via Raspberry Pi print server
-  const PRINT_SERVER = process.env.NEXT_PUBLIC_PRINT_SERVER_URL
-
+  // Print using the printer configured in Settings (print server or browser)
   useEffect(() => {
     if (!shouldPrint || !receiptDetail) return
     const timer = setTimeout(async () => {
-      if (PRINT_SERVER) {
-        try {
-          const res = await fetch(`${PRINT_SERVER}/print`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...receiptDetail,
-              shopName: (testMode ? '*** ทดสอบ / TEST ***  ' : '') + (settings?.shop_name || ''),
-              shopAddress: settings?.shop_address || '',
-              shopPhone: settings?.shop_phone || ''
-            })
-          })
-          const result = await res.json()
-          if (!result.ok) throw new Error(result.error)
-        } catch (err: any) {
-          console.error('Pi print failed:', err)
-          window.print()
-        }
-      } else {
-        window.print()
+      try {
+        await printReceipt(
+          settings,
+          {
+            ...receiptDetail,
+            shopName: (testMode ? '*** ทดสอบ / TEST ***  ' : '') + (settings?.shop_name || ''),
+            shopAddress: settings?.shop_address || '',
+            shopPhone: settings?.shop_phone || ''
+          },
+          { fallbackToBrowser: true }
+        )
+      } finally {
+        setShouldPrint(false)
       }
-      setShouldPrint(false)
     }, 300)
     return () => clearTimeout(timer)
-  }, [shouldPrint, receiptDetail, PRINT_SERVER])
+  }, [shouldPrint, receiptDetail, settings])
 
   const addToCart = (product: Product) => {
     // Functional update form is critical here: multiple scans can fire

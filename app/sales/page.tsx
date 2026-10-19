@@ -4,6 +4,8 @@ import { supabase } from '@/src/lib/supabase'
 import { TrendingUp, Printer, Eye, X, FileText } from 'lucide-react'
 import { Sale, ReceiptDetail, Settings } from '@/src/types'
 import TaxInvoiceModal from '@/app/component/TaxInvoiceModal'
+import Receipt from '@/app/component/Receipt'
+import { printReceipt, getPrintConfig } from '@/src/lib/print'
 
 export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([])
@@ -14,8 +16,8 @@ export default function SalesPage() {
   const [realProfit, setRealProfit] = useState(0)
   const [previewSale, setPreviewSale] = useState<Sale | null>(null)
   const [invoiceSale, setInvoiceSale] = useState<Sale | null>(null)
-
-  const PRINT_SERVER = process.env.NEXT_PUBLIC_PRINT_SERVER_URL
+  // Receipt rendered off-screen so browser printing has something to print
+  const [browserReceipt, setBrowserReceipt] = useState<ReceiptDetail | null>(null)
 
   useEffect(() => {
     fetchSales()
@@ -86,18 +88,12 @@ export default function SalesPage() {
     }
 
     try {
-      if (PRINT_SERVER) {
-        const res = await fetch(`${PRINT_SERVER}/print`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-        const result = await res.json()
-        if (!result.ok) throw new Error(result.error)
-      } else {
-        // Fallback: browser print
-        window.print()
+      if (getPrintConfig(settings).mode === 'browser') {
+        // Render the receipt first, then let the browser print it
+        setBrowserReceipt(sale.receipt_snapshot)
+        await new Promise(resolve => setTimeout(resolve, 300))
       }
+      await printReceipt(settings, payload)
     } catch (err: any) {
       console.error('Print failed:', err)
       alert('พิมพ์ไม่สำเร็จ: ' + err.message)
@@ -345,6 +341,13 @@ export default function SalesPage() {
           settings={settings}
           onClose={() => setInvoiceSale(null)}
         />
+      )}
+
+      {/* Used only for browser printing; hidden on screen, shown in print */}
+      {browserReceipt && (
+        <div className="hidden print:block fixed top-0 left-0 bg-white">
+          <Receipt detail={browserReceipt} settings={settings} />
+        </div>
       )}
     </div>
   )
