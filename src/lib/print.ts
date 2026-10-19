@@ -1,6 +1,10 @@
 import { Settings } from '@/src/types'
+import { renderReceiptCanvas, encodeEscPos, ReceiptPayload } from '@/src/lib/escpos'
+import { getSavedDevice, sendToDevice, SavedDevice } from '@/src/lib/printerDevice'
 
-export type PrintMode = 'server' | 'browser'
+// 'usb' and 'bluetooth' come from a printer connected on this device (see Settings);
+// 'server' and 'browser' are the shop-wide choice stored in the database.
+export type PrintMode = 'server' | 'browser' | 'usb' | 'bluetooth'
 export type PaperWidth = 58 | 80
 
 export interface PrintConfig {
@@ -9,12 +13,14 @@ export interface PrintConfig {
   paperWidthMm: PaperWidth
   // Usable width of the receipt content (paper minus margins), in mm
   contentWidthMm: number
+  // Printer connected on this device, if any (takes priority over the shop-wide mode)
+  device: SavedDevice | null
 }
 
 const ENV_URL = process.env.NEXT_PUBLIC_PRINT_SERVER_URL || ''
 
-// Settings from the database win; the old env var is only a fallback so
-// existing deployments keep working until the settings are filled in.
+// Priority: printer connected on this device > shop settings in the database >
+// the old env var (kept as a fallback so existing deployments keep working).
 export function getPrintConfig(settings: Settings | null | undefined): PrintConfig {
   const serverUrl = (settings?.print_server_url || ENV_URL).trim().replace(/\/+$/, '')
   const paperWidthMm: PaperWidth = settings?.paper_width_mm === 80 ? 80 : 58
@@ -28,11 +34,15 @@ export function getPrintConfig(settings: Settings | null | undefined): PrintConf
   // Server mode without a URL cannot work, so fall back to the browser
   if (mode === 'server' && !serverUrl) mode = 'browser'
 
+  const device = getSavedDevice()
+  if (device) mode = device.type
+
   return {
     mode,
     serverUrl,
     paperWidthMm,
     contentWidthMm: paperWidthMm === 80 ? 72 : 48,
+    device,
   }
 }
 
@@ -73,16 +83,30 @@ async function sendToServer(cfg: PrintConfig, payload: object) {
 }
 
 // Prints a receipt using the configured printer.
-// - server mode: POST to the print server; if it fails and `fallbackToBrowser`
-//   is true, falls back to window.print(), otherwise throws.
+// - usb / bluetooth: renders the receipt in the browser and sends it straight to
+//   the printer connected on this device.
+// - server mode: POST to the print server.
 // - browser mode: window.print(). The caller must have a <Receipt> rendered.
+// If usb / bluetooth / server fails and `fallbackToBrowser` is true, falls back
+// to window.print(), otherwise throws.
 // Returns which path was actually used.
 export async function printReceipt(
   settings: Settings | null | undefined,
   payload: object,
   opts: { fallbackToBrowser?: boolean } = {}
-): Promise<'server' | 'browser'> {
+): Promise<PrintMode> {
   const cfg = getPrintConfig(settings)
+
+  if ((cfg.mode === 'usb' || cfg.mode === 'bluetooth') && cfg.device) {
+    try {
+      const canvas = renderReceiptCanvas(payload as ReceiptPayload, cfg.paperWidthMm)
+      await sendToDevice(cfg.device, encodeEscPos(canvas))
+      return cfg.mode
+    } catch (err) {
+      if (!opts.fallbackToBrowser) throw err
+      console.error(`${cfg.mode} print failed, falling back to browser print:`, err)
+    }
+  }
 
   if (cfg.mode === 'server') {
     try {

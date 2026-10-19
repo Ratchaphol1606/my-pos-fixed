@@ -1,10 +1,19 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle, Award, Users, Search, Edit3, X, ChevronDown, Printer } from 'lucide-react'
+import { Settings, Save, Upload, Store, Phone, MapPin, CreditCard, AlertTriangle, Award, Users, Search, Edit3, X, ChevronDown, Printer, Usb, Bluetooth } from 'lucide-react'
 import { Customer, ReceiptDetail } from '@/src/types'
 import Receipt from '@/app/component/Receipt'
 import { printReceipt } from '@/src/lib/print'
+import {
+  SavedDevice,
+  getSavedDevice,
+  connectUsb,
+  connectBluetooth,
+  forgetDevice,
+  isUsbSupported,
+  isBluetoothSupported,
+} from '@/src/lib/printerDevice'
 
 const TEST_RECEIPT: ReceiptDetail = {
   items: [
@@ -69,6 +78,11 @@ export default function SettingsPage() {
     paper_width_mm: 58
   })
   const [testingPrint, setTestingPrint] = useState(false)
+  // Printer connected directly to THIS device (USB / Bluetooth), stored in this browser only
+  const [device, setDevice] = useState<SavedDevice | null>(null)
+  const [deviceBusy, setDeviceBusy] = useState(false)
+  const [usbOk, setUsbOk] = useState(false)
+  const [btOk, setBtOk] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [file, setFile] = useState<File | null>(null)
@@ -98,6 +112,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchSettings()
+    setDevice(getSavedDevice())
+    setUsbOk(isUsbSupported())
+    setBtOk(isBluetoothSupported())
   }, [])
 
   useEffect(() => {
@@ -194,11 +211,35 @@ export default function SettingsPage() {
         },
         { fallbackToBrowser: false }
       )
-      if (via === 'server') alert('✅ ส่งคำสั่งพิมพ์ไปที่เครื่องพิมพ์แล้ว')
+      if (via !== 'browser') alert('✅ ส่งคำสั่งพิมพ์ไปที่เครื่องพิมพ์แล้ว')
     } catch (error: any) {
       alert('❌ พิมพ์ไม่สำเร็จ: ' + error.message)
     } finally {
       setTestingPrint(false)
+    }
+  }
+
+  // These must run straight from a button click (browser security requirement)
+  const handleConnectDevice = async (kind: 'usb' | 'bluetooth') => {
+    setDeviceBusy(true)
+    try {
+      const saved = kind === 'usb' ? await connectUsb() : await connectBluetooth()
+      setDevice(saved)
+      alert(`✅ เชื่อมต่อ ${saved.name} แล้ว (ใช้กับเครื่องนี้เท่านั้น)`)
+    } catch (error: any) {
+      alert('❌ ' + error.message)
+    } finally {
+      setDeviceBusy(false)
+    }
+  }
+
+  const handleForgetDevice = async () => {
+    setDeviceBusy(true)
+    try {
+      await forgetDevice()
+      setDevice(null)
+    } finally {
+      setDeviceBusy(false)
     }
   }
 
@@ -397,6 +438,63 @@ export default function SettingsPage() {
                     <option value={58}>58 มม.</option>
                     <option value={80}>80 มม.</option>
                   </select>
+                </div>
+
+                {/* เครื่องพิมพ์ที่ต่อกับอุปกรณ์นี้โดยตรง */}
+                <div className="p-4 border border-slate-200 rounded-2xl space-y-3">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                    เครื่องพิมพ์ที่ต่อกับอุปกรณ์นี้ (USB / Bluetooth)
+                  </p>
+
+                  {device ? (
+                    <div className="flex items-center justify-between gap-3 bg-green-50 border border-green-100 rounded-xl p-3">
+                      <div className="text-sm text-black min-w-0">
+                        <p className="font-bold truncate">
+                          {device.type === 'usb' ? 'USB' : 'Bluetooth'}: {device.name}
+                        </p>
+                        <p className="text-[10px] text-slate-500">อุปกรณ์นี้จะพิมพ์ตรงเข้าเครื่องนี้ แทนค่าของร้าน</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleForgetDevice}
+                        disabled={deviceBusy}
+                        className="shrink-0 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 disabled:opacity-40"
+                      >
+                        ยกเลิกการเชื่อมต่อ
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">ยังไม่ได้เชื่อมต่อ — อุปกรณ์นี้ใช้ค่าของร้านด้านบน</p>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleConnectDevice('usb')}
+                      disabled={deviceBusy || !usbOk}
+                      className="py-3 rounded-2xl bg-slate-100 text-slate-700 font-bold text-sm hover:bg-slate-200 disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      <Usb size={16} /> เชื่อมต่อ USB
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleConnectDevice('bluetooth')}
+                      disabled={deviceBusy || !btOk}
+                      className="py-3 rounded-2xl bg-slate-100 text-slate-700 font-bold text-sm hover:bg-slate-200 disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      <Bluetooth size={16} /> เชื่อมต่อ Bluetooth
+                    </button>
+                  </div>
+
+                  {!usbOk && !btOk && (
+                    <p className="text-[10px] text-red-500">
+                      เบราว์เซอร์นี้ไม่รองรับการพิมพ์ตรง (ต้องใช้ Chrome หรือ Edge — ไม่รองรับ iPhone/iPad)
+                    </p>
+                  )}
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    ไม่ต้องใช้ Raspberry Pi และตั้งค่าแยกได้ทีละเครื่อง ถ้าเครื่องพิมพ์ส่งไม่สำเร็จ ระบบจะพิมพ์ผ่านเบราว์เซอร์แทนตอนขาย
+                    หมายเหตุ: บน Windows ที่ติดตั้งไดรเวอร์เครื่องพิมพ์แล้ว USB จะเชื่อมต่อไม่ได้ ให้ใช้ Bluetooth หรือ Android แทน
+                  </p>
                 </div>
 
                 <button
