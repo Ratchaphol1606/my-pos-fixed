@@ -6,6 +6,39 @@ import { normalizePairCode, useScanSender, type ScanResult } from '@/src/lib/use
 
 const TARGET_KEY = 'pos_scan_target'
 
+// One shared AudioContext, created/resumed on the first tap or keypress.
+// iOS only lets audio play after a user gesture, and results arrive
+// asynchronously over the websocket, so the context has to be unlocked
+// ahead of time rather than created at beep time.
+let audioCtx: AudioContext | null = null
+
+function getAudio(): AudioContext | null {
+  try {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      audioCtx = new Ctx()
+    }
+    if (audioCtx.state === 'suspended') void audioCtx.resume()
+    return audioCtx
+  } catch {
+    return null
+  }
+}
+
+function playBeep(freq: number, durationMs: number) {
+  const ctx = getAudio()
+  if (!ctx) return
+  const osc = ctx.createOscillator()
+  const gain = ctx.createGain()
+  osc.frequency.value = freq
+  osc.connect(gain)
+  gain.connect(ctx.destination)
+  gain.gain.setValueAtTime(0.15, ctx.currentTime)
+  osc.start()
+  osc.stop(ctx.currentTime + durationMs / 1000)
+}
+
 interface LogEntry {
   key: number
   code: string
@@ -25,6 +58,17 @@ export default function RemoteScanPage() {
   const keyRef = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Unlock audio on the first interaction anywhere on the page.
+  useEffect(() => {
+    const unlock = () => { getAudio() }
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+  }, [])
+
   const applyInitialCode = (code: string) => {
     if (!code) return
     setPairCode(code)
@@ -41,10 +85,17 @@ export default function RemoteScanPage() {
       if (code) localStorage.setItem(TARGET_KEY, code)
       else code = localStorage.getItem(TARGET_KEY) ?? ''
     } catch { /* ignore */ }
+    // One-time read of browser-only state after mount (can't be done
+    // during render without a server/client HTML mismatch).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     applyInitialCode(code)
   }, [])
 
   const handleResult = (r: ScanResult) => {
+    // Beep only once the POS confirms, so a high beep means the item
+    // really landed in the cart; low buzz = not found.
+    if (r.status === 'found') playBeep(880, 120)
+    else playBeep(220, 250)
     setLog(prev => {
       // Mark the oldest still-pending entry for this code.
       const idx = [...prev].reverse().findIndex(e => e.code === r.code && e.status === 'sent')
@@ -65,6 +116,7 @@ export default function RemoteScanPage() {
     setLog(prev => [{ key, code, status: 'sent' as const }, ...prev].slice(0, 30))
     const ok = await sendScan(code)
     if (!ok) {
+      playBeep(220, 250)
       setLog(prev => prev.map(e => (e.key === key ? { ...e, status: 'failed' as const } : e)))
     }
   }
