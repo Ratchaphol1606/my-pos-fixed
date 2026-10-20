@@ -1,14 +1,14 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag, Camera, UserSearch, UserPlus, Award, UserX, Smartphone } from 'lucide-react'
+import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag, Camera, UserSearch, UserPlus, Award, UserX, Monitor } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import generatePayload from 'promptpay-qr'
 import Receipt from './Receipt'
 import CameraScanner from './CameraScanner'
 import { Product, CartItem, ReceiptDetail, Settings, Customer } from '@/src/types'
 import { printReceipt } from '@/src/lib/print'
-import { useScanReceiver, getOrCreatePairCode, resetPairCode, type ScanResult } from '@/src/lib/useScanRelay'
+import { useDisplayBroadcaster, getOrCreatePairCode, resetPairCode, type DisplayState } from '@/src/lib/customerDisplay'
 
 export default function POSScreen({ testMode = false }: { testMode?: boolean }) {
   const [products, setProducts] = useState<Product[]>([])
@@ -26,12 +26,15 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   const [dailySubsidyUsed, setDailySubsidyUsed] = useState<number>(0)
   const [showCameraScanner, setShowCameraScanner] = useState(false)
 
-  // --- เครื่องสแกนระยะไกล (Realtime scan relay) ---
+  // --- จอลูกค้า (live customer display) ---
   // Pair code is read from localStorage after mount (not during render)
   // so server and client HTML match.
   const [pairCode, setPairCode] = useState<string | null>(null)
   const [showPairModal, setShowPairModal] = useState(false)
   useEffect(() => { setPairCode(getOrCreatePairCode()) }, [])
+  // Shown on the customer display right after a sale, then cleared.
+  const [paidInfo, setPaidInfo] = useState<NonNullable<DisplayState['paid']> | null>(null)
+  const [lastAdded, setLastAdded] = useState<{ name: string; at: number } | null>(null)
 
   // --- สมาชิก / แต้มสะสม (Membership & Loyalty Points) ---
   const [customerSearch, setCustomerSearch] = useState('')
@@ -227,6 +230,7 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
       }
       return [...prevCart, { ...product, qty: 1 }]
     })
+    setLastAdded({ name: product.name, at: Date.now() })
   }
 
   // Looks a scanned code up directly against the products table by
@@ -266,9 +270,6 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   // wait for the previous one to fully finish before starting.
   const scanQueueRef = useRef<string[]>([])
   const isProcessingScanRef = useRef(false)
-  // Lets the queue report each scan's outcome back to the remote
-  // scanner. Wired up below once the relay hook exists.
-  const sendScanResultRef = useRef<((r: ScanResult) => void) | null>(null)
 
   const processScanQueue = async () => {
     if (isProcessingScanRef.current) return
@@ -291,17 +292,14 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
           setScanFeedback('notfound')
           playBeep(220, 250) // low buzz = not found
           setTimeout(() => setScanFeedback(null), 800)
-          sendScanResultRef.current?.({ code: trimmed, status: 'notfound' })
         } else {
           addToCart(data)
           setScanFeedback('found')
           playBeep(880, 120) // short high beep = added
           setTimeout(() => setScanFeedback(null), 350)
-          sendScanResultRef.current?.({ code: trimmed, status: 'found', name: data.name })
         }
       } catch {
         setScanFeedback('notfound')
-        sendScanResultRef.current?.({ code: trimmed, status: 'notfound' })
       }
 
       // Small gap between processing queued scans so the beep/flash
@@ -319,11 +317,6 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
     scanQueueRef.current.push(trimmed)
     processScanQueue()
   }
-
-  // Scans arriving from the paired remote scanner go through the exact
-  // same queue as local scans, so ordering/beep/feedback behave the same.
-  const { connected: relayConnected, scannerOnline, sendResult } = useScanReceiver(pairCode, handleBarcodeScan)
-  useEffect(() => { sendScanResultRef.current = sendResult }, [sendResult])
 
   const updateCartQty = (id: string, delta: number) => {
     setCart(prevCart => prevCart.map(item => {
@@ -378,6 +371,38 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   // แต้มที่จะได้รับจากบิลนี้ (REQ-04)
   const earnUnit = settings?.earn_amount_thb || 0
   const pointsEarned = (selectedCustomer && earnUnit > 0) ? Math.floor(total / earnUnit) : 0
+
+  // Snapshot of what the customer display should show. Paying beats the
+  // cart view, and a new cart beats the "paid" thank-you screen.
+  const displayStage: DisplayState['stage'] =
+    showPayModal ? 'paying' : cart.length > 0 ? 'cart' : paidInfo ? 'paid' : 'idle'
+  let promptPayPayload: string | undefined
+  if (displayStage === 'paying' && paymentMethod === 'transfer' && settings?.promptpay_id) {
+    try { promptPayPayload = generatePayload(settings.promptpay_id, { amount: total }) } catch { /* invalid id */ }
+  }
+  const displayState: DisplayState = {
+    stage: displayStage,
+    shopName: settings?.shop_name ?? '',
+    lines: cart.map(item => ({ name: item.name, qty: item.qty, price: item.retail_price })),
+    subtotal,
+    discount: totalDiscount,
+    total,
+    ...(selectedCustomer ? { customerName: selectedCustomer.name, pointsEarned } : {}),
+    ...(displayStage === 'paying' ? {
+      payment: {
+        method: paymentMethod,
+        ...(paymentMethod === 'cash' ? { received: receivedAmount, change } : {}),
+        ...(paymentMethod === 'transfer' && promptPayPayload ? { qrPayload: promptPayPayload } : {}),
+        ...(paymentMethod === 'wallet' ? (() => {
+          const { govShare, userShare } = calculatePaoTang(total, dailySubsidyUsed)
+          return { govShare, userShare }
+        })() : {}),
+      },
+    } : {}),
+    ...(displayStage === 'paid' && paidInfo ? { paid: paidInfo } : {}),
+    ...(lastAdded ? { lastAdded } : {}),
+  }
+  const { connected: displayConnected, displayOnline } = useDisplayBroadcaster(pairCode, displayState)
 
   useEffect(() => {
     setRedeemPoints(prev => Math.min(prev, maxRedeemablePoints))
@@ -453,6 +478,14 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
       if (saleError) throw saleError;
 
       setReceiptDetail(snapshot);
+      // Thank-you screen on the customer display for a few seconds.
+      setPaidInfo({
+        total,
+        change: paymentMethod === 'cash' ? Math.max(0, change) : 0,
+        method: paymentMethod,
+        ...(selectedCustomer && pointsEarned > 0 ? { pointsEarned } : {}),
+      })
+      setTimeout(() => setPaidInfo(null), 8000)
       setCart([]);
       setDiscount(0);
       setRedeemPoints(0);
@@ -517,12 +550,12 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
           </button>
           <button
             onClick={() => setShowPairModal(true)}
-            title="เชื่อมต่อเครื่องสแกน"
+            title="จอลูกค้า"
             className="relative shrink-0 px-4 bg-white text-slate-700 rounded-xl shadow-sm hover:bg-slate-100 transition-all flex items-center justify-center"
           >
-            <Smartphone size={18} />
+            <Monitor size={18} />
             <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${
-              scannerOnline ? 'bg-emerald-500' : relayConnected ? 'bg-amber-400' : 'bg-gray-300'
+              displayOnline ? 'bg-emerald-500' : displayConnected ? 'bg-amber-400' : 'bg-gray-300'
             }`} />
           </button>
         </div>
@@ -907,16 +940,16 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden" onClick={() => setShowPairModal(false)}>
           <div className="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl text-center" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <p className="font-bold text-gray-800">เชื่อมต่อเครื่องสแกน</p>
+              <p className="font-bold text-gray-800">เชื่อมต่อจอลูกค้า</p>
               <button onClick={() => setShowPairModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="inline-block p-3 bg-white border rounded-xl">
-              <QRCodeSVG value={`${window.location.origin}/scan?c=${pairCode}`} size={160} />
+              <QRCodeSVG value={`${window.location.origin}/display?c=${pairCode}`} size={160} />
             </div>
-            <p className="mt-3 text-xs text-gray-500">สแกน QR ด้วยอีกเครื่อง หรือเปิด /scan แล้วใส่รหัส</p>
+            <p className="mt-3 text-xs text-gray-500">สแกน QR ด้วย iPad หรือเปิด /display แล้วใส่รหัส</p>
             <p className="font-mono text-2xl font-black tracking-[0.3em] text-gray-800 mt-1">{pairCode}</p>
-            <p className={`mt-2 text-xs font-bold ${scannerOnline ? 'text-emerald-600' : relayConnected ? 'text-amber-600' : 'text-gray-400'}`}>
-              {scannerOnline ? 'เครื่องสแกนเชื่อมต่อแล้ว' : relayConnected ? 'รอเครื่องสแกน...' : 'กำลังเชื่อมต่อ...'}
+            <p className={`mt-2 text-xs font-bold ${displayOnline ? 'text-emerald-600' : displayConnected ? 'text-amber-600' : 'text-gray-400'}`}>
+              {displayOnline ? 'จอลูกค้าเชื่อมต่อแล้ว' : displayConnected ? 'รอจอลูกค้า...' : 'กำลังเชื่อมต่อ...'}
             </p>
             <button
               onClick={() => setPairCode(resetPairCode())}

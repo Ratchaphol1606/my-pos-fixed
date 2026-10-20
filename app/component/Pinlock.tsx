@@ -1,10 +1,12 @@
 "use client"
 import { useState, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { Lock, Delete } from 'lucide-react'
 import { RoleContext, Role } from '@/src/lib/RoleContext'
 import { supabase } from '@/src/lib/supabase'
 
 export default function PinLock({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
   const [unlocked, setUnlocked] = useState(false)
   const [role, setRole] = useState<Role>(null)
   const [checking, setChecking] = useState(true)
@@ -77,6 +79,11 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
   }
 
   const del = () => setPin(p => p.slice(0, -1))
+
+  // The customer display (/display) is a read-only screen that only shows
+  // what the cashier's POS broadcasts to it — it has no database access
+  // and must not ask the customer for a PIN.
+  if (pathname === '/display') return <>{children}</>
 
   if (unlocked) return <RoleContext.Provider value={role}>{children}</RoleContext.Provider>
 
