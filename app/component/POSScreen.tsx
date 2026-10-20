@@ -1,13 +1,14 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag, Camera, UserSearch, UserPlus, Award, UserX } from 'lucide-react'
+import { Search, ShoppingCart, Printer, X, Banknote, QrCode, Tag, Camera, UserSearch, UserPlus, Award, UserX, Smartphone } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import generatePayload from 'promptpay-qr'
 import Receipt from './Receipt'
 import CameraScanner from './CameraScanner'
 import { Product, CartItem, ReceiptDetail, Settings, Customer } from '@/src/types'
 import { printReceipt } from '@/src/lib/print'
+import { useScanReceiver, getOrCreatePairCode, resetPairCode, type ScanResult } from '@/src/lib/useScanRelay'
 
 export default function POSScreen({ testMode = false }: { testMode?: boolean }) {
   const [products, setProducts] = useState<Product[]>([])
@@ -24,6 +25,13 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   const [settings, setSettings] = useState<Settings | null>(null)
   const [dailySubsidyUsed, setDailySubsidyUsed] = useState<number>(0)
   const [showCameraScanner, setShowCameraScanner] = useState(false)
+
+  // --- เครื่องสแกนระยะไกล (Realtime scan relay) ---
+  // Pair code is read from localStorage after mount (not during render)
+  // so server and client HTML match.
+  const [pairCode, setPairCode] = useState<string | null>(null)
+  const [showPairModal, setShowPairModal] = useState(false)
+  useEffect(() => { setPairCode(getOrCreatePairCode()) }, [])
 
   // --- สมาชิก / แต้มสะสม (Membership & Loyalty Points) ---
   const [customerSearch, setCustomerSearch] = useState('')
@@ -258,6 +266,9 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   // wait for the previous one to fully finish before starting.
   const scanQueueRef = useRef<string[]>([])
   const isProcessingScanRef = useRef(false)
+  // Lets the queue report each scan's outcome back to the remote
+  // scanner. Wired up below once the relay hook exists.
+  const sendScanResultRef = useRef<((r: ScanResult) => void) | null>(null)
 
   const processScanQueue = async () => {
     if (isProcessingScanRef.current) return
@@ -280,14 +291,17 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
           setScanFeedback('notfound')
           playBeep(220, 250) // low buzz = not found
           setTimeout(() => setScanFeedback(null), 800)
+          sendScanResultRef.current?.({ code: trimmed, status: 'notfound' })
         } else {
           addToCart(data)
           setScanFeedback('found')
           playBeep(880, 120) // short high beep = added
           setTimeout(() => setScanFeedback(null), 350)
+          sendScanResultRef.current?.({ code: trimmed, status: 'found', name: data.name })
         }
       } catch {
         setScanFeedback('notfound')
+        sendScanResultRef.current?.({ code: trimmed, status: 'notfound' })
       }
 
       // Small gap between processing queued scans so the beep/flash
@@ -305,6 +319,11 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
     scanQueueRef.current.push(trimmed)
     processScanQueue()
   }
+
+  // Scans arriving from the paired remote scanner go through the exact
+  // same queue as local scans, so ordering/beep/feedback behave the same.
+  const { connected: relayConnected, scannerOnline, sendResult } = useScanReceiver(pairCode, handleBarcodeScan)
+  useEffect(() => { sendScanResultRef.current = sendResult }, [sendResult])
 
   const updateCartQty = (id: string, delta: number) => {
     setCart(prevCart => prevCart.map(item => {
@@ -495,6 +514,16 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
             className="shrink-0 px-4 bg-slate-900 text-white rounded-xl shadow-sm hover:bg-slate-700 transition-all flex items-center justify-center"
           >
             <Camera size={18} />
+          </button>
+          <button
+            onClick={() => setShowPairModal(true)}
+            title="เชื่อมต่อเครื่องสแกน"
+            className="relative shrink-0 px-4 bg-white text-slate-700 rounded-xl shadow-sm hover:bg-slate-100 transition-all flex items-center justify-center"
+          >
+            <Smartphone size={18} />
+            <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${
+              scannerOnline ? 'bg-emerald-500' : relayConnected ? 'bg-amber-400' : 'bg-gray-300'
+            }`} />
           </button>
         </div>
 
@@ -870,6 +899,32 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
       {receiptDetail && (
         <div className="hidden print:block fixed top-0 left-0 bg-white">
           <Receipt detail={receiptDetail} settings={testMode && settings ? { ...settings, shop_name: '*** ทดสอบ / TEST ***  ' + settings.shop_name } : settings} />
+        </div>
+      )}
+
+      {/* เชื่อมต่อเครื่องสแกนระยะไกล */}
+      {showPairModal && pairCode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden" onClick={() => setShowPairModal(false)}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="font-bold text-gray-800">เชื่อมต่อเครื่องสแกน</p>
+              <button onClick={() => setShowPairModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="inline-block p-3 bg-white border rounded-xl">
+              <QRCodeSVG value={`${window.location.origin}/scan?c=${pairCode}`} size={160} />
+            </div>
+            <p className="mt-3 text-xs text-gray-500">สแกน QR ด้วยอีกเครื่อง หรือเปิด /scan แล้วใส่รหัส</p>
+            <p className="font-mono text-2xl font-black tracking-[0.3em] text-gray-800 mt-1">{pairCode}</p>
+            <p className={`mt-2 text-xs font-bold ${scannerOnline ? 'text-emerald-600' : relayConnected ? 'text-amber-600' : 'text-gray-400'}`}>
+              {scannerOnline ? 'เครื่องสแกนเชื่อมต่อแล้ว' : relayConnected ? 'รอเครื่องสแกน...' : 'กำลังเชื่อมต่อ...'}
+            </p>
+            <button
+              onClick={() => setPairCode(resetPairCode())}
+              className="mt-3 w-full py-2 rounded-xl bg-gray-100 text-gray-600 font-semibold text-sm"
+            >
+              สร้างรหัสใหม่ (ตัดการเชื่อมต่อเครื่องเดิม)
+            </button>
+          </div>
         </div>
       )}
 
