@@ -49,7 +49,19 @@ export default function CustomerDisplayPage() {
     flashTimer.current = setTimeout(() => setFlash(null), 1800)
   }
 
-  const { state, connected, posOnline } = useDisplayReceiver(pairCode, showFlash)
+  const { state, connected, posOnline, ready } = useDisplayReceiver(pairCode, showFlash)
+
+  // Thank-you screen times out here too, so it can't get stuck if the POS
+  // tab was asleep when its own timer should have cleared it.
+  const [dismissedPaid, setDismissedPaid] = useState<string | null>(null)
+  const paidKey = state?.stage === 'paid' && state.paid
+    ? `${state.paid.at ?? 0}-${state.paid.total}`
+    : null
+  useEffect(() => {
+    if (!paidKey) return
+    const t = setTimeout(() => setDismissedPaid(paidKey), 10000)
+    return () => clearTimeout(t)
+  }, [paidKey])
 
   const lineCount = state?.lines.length ?? 0
   useEffect(() => {
@@ -92,7 +104,7 @@ export default function CustomerDisplayPage() {
     )
   }
 
-  if (!connected || !posOnline) {
+  if (!connected || !posOnline || !ready) {
     return (
       <div className={`${shell} items-center justify-center text-center p-6`}>
         <WifiOff size={56} className="text-gray-300 mb-4" />
@@ -100,7 +112,7 @@ export default function CustomerDisplayPage() {
           {state?.shopName || 'จอลูกค้า'}
         </p>
         <p className="text-sm text-gray-400 mt-2">
-          {connected ? 'รอเครื่องคิดเงิน...' : 'กำลังเชื่อมต่อ...'}
+          {!connected ? 'กำลังเชื่อมต่อใหม่...' : !posOnline ? 'รอเครื่องคิดเงิน...' : 'กำลังโหลด...'}
         </p>
         <button
           onClick={() => {
@@ -117,7 +129,7 @@ export default function CustomerDisplayPage() {
 
   const s: DisplayState | null = state
 
-  if (!s || s.stage === 'idle') {
+  if (!s || s.stage === 'idle' || (paidKey !== null && paidKey === dismissedPaid)) {
     return (
       <div className={`${shell} items-center justify-center text-center bg-gradient-to-br from-blue-600 to-blue-800 text-white`}>
         <p className="text-5xl font-black tracking-tight">ยินดีต้อนรับ</p>
@@ -137,6 +149,9 @@ export default function CustomerDisplayPage() {
         )}
         {!!s.paid.pointsEarned && s.paid.pointsEarned > 0 && (
           <p className="text-lg mt-3 text-emerald-100">ได้รับ {s.paid.pointsEarned} แต้ม</p>
+        )}
+        {s.paid.pointsBalance !== undefined && (
+          <p className="text-lg mt-1 text-emerald-100">แต้มสะสมคงเหลือ {s.paid.pointsBalance.toLocaleString()} แต้ม</p>
         )}
         <p className="text-xl mt-8 text-emerald-100">ขอบคุณที่ใช้บริการ</p>
       </div>
@@ -193,8 +208,14 @@ export default function CustomerDisplayPage() {
               <p className="text-gray-400 font-bold text-sm">ยอดชำระ</p>
               <p className="text-6xl font-black tracking-tighter text-blue-600">{baht(s.total)}</p>
             </div>
+            {!!s.pointsRedeemed && s.pointsRedeemed > 0 && (
+              <p className="text-sm font-bold text-green-600">ใช้แต้มแลกส่วนลด {s.pointsRedeemed.toLocaleString()} แต้ม</p>
+            )}
             {!!s.pointsEarned && s.pointsEarned > 0 && (
               <p className="text-sm font-bold text-blue-500">จะได้รับ {s.pointsEarned} แต้ม</p>
+            )}
+            {s.pointsBalance !== undefined && (
+              <p className="text-sm font-bold text-gray-400">แต้มสะสมปัจจุบัน {s.pointsBalance.toLocaleString()} แต้ม</p>
             )}
           </>
         )}

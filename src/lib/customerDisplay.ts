@@ -68,6 +68,9 @@ export interface DisplayState {
   total: number
   customerName?: string
   pointsEarned?: number
+  // Member's balance before this bill, and points used on it.
+  pointsBalance?: number
+  pointsRedeemed?: number
   payment?: {
     method: DisplayPayMethod
     received?: number
@@ -81,6 +84,11 @@ export interface DisplayState {
     change: number
     method: DisplayPayMethod
     pointsEarned?: number
+    // Member's balance after this bill (members only).
+    pointsBalance?: number
+    // When the sale finished, so the display can time out the thank-you
+    // screen itself even if the POS tab was asleep and never cleared it.
+    at?: number
   }
   // Changes every time an item is added, so the display can flash it.
   lastAdded?: { name: string; at: number }
@@ -105,11 +113,33 @@ function useRelayChannel(
   const bindRef = useRef(bind)
   const [subscribed, setSubscribed] = useState(false)
   const [peerOnline, setPeerOnline] = useState(false)
+  // Bumping `attempt` tears the channel down and joins a fresh one.
+  const [attempt, setAttempt] = useState(0)
+  const retryCountRef = useRef(0)
+  const subscribedRef = useRef(false)
 
   useEffect(() => { bindRef.current = bind })
 
+  // A sleeping iPad or a dropped Wi-Fi can leave the socket dead without a
+  // useful status event. Rejoin as soon as the page is visible / online again.
+  useEffect(() => {
+    const wake = () => {
+      if (document.visibilityState === 'visible' && !subscribedRef.current) {
+        setAttempt(a => a + 1)
+      }
+    }
+    window.addEventListener('online', wake)
+    document.addEventListener('visibilitychange', wake)
+    return () => {
+      window.removeEventListener('online', wake)
+      document.removeEventListener('visibilitychange', wake)
+    }
+  }, [])
+
   useEffect(() => {
     if (!pairCode) return
+    let disposed = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
     const channel = supabase.channel(`display:${pairCode}`, {
       config: { broadcast: { self: false }, presence: { key: `${role}-${Math.random().toString(36).slice(2, 8)}` } },
     })
@@ -123,22 +153,37 @@ function useRelayChannel(
     })
 
     channel.subscribe(async (status) => {
+      // Ignore events from a channel we've already replaced or removed
+      // (removeChannel itself reports CLOSED).
+      if (disposed) return
       if (status === 'SUBSCRIBED') {
+        retryCountRef.current = 0
+        subscribedRef.current = true
         setSubscribed(true)
         await channel.track({ role, at: Date.now() })
       } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        subscribedRef.current = false
         setSubscribed(false)
         setPeerOnline(false)
+        if (!retryTimer) {
+          // Exponential backoff: 1s, 2s, 4s ... capped at 15s.
+          const delay = Math.min(1000 * 2 ** retryCountRef.current, 15000)
+          retryCountRef.current += 1
+          retryTimer = setTimeout(() => setAttempt(a => a + 1), delay)
+        }
       }
     })
 
     return () => {
+      disposed = true
+      if (retryTimer) clearTimeout(retryTimer)
+      subscribedRef.current = false
       setSubscribed(false)
       setPeerOnline(false)
       channelRef.current = null
       supabase.removeChannel(channel)
     }
-  }, [pairCode, role])
+  }, [pairCode, role, attempt])
 
   return { channelRef, subscribed, peerOnline }
 }
@@ -168,6 +213,9 @@ export function useDisplayBroadcaster(pairCode: string | null, state: DisplaySta
 // POS adds an item (not for the first snapshot after connecting).
 export function useDisplayReceiver(pairCode: string | null, onItemAdded?: (name: string) => void) {
   const [state, setState] = useState<DisplayState | null>(null)
+  // False from the moment the link drops until the POS sends a new
+  // snapshot, so a reconnecting display never shows a stale cart.
+  const [fresh, setFresh] = useState(false)
   const onAddedRef = useRef(onItemAdded)
   useEffect(() => { onAddedRef.current = onItemAdded })
   const lastAtRef = useRef<number | null | undefined>(undefined)
@@ -181,6 +229,7 @@ export function useDisplayReceiver(pairCode: string | null, onItemAdded?: (name:
       }
       lastAtRef.current = at
       setState(payload)
+      setFresh(true)
     })
   })
 
@@ -191,5 +240,12 @@ export function useDisplayReceiver(pairCode: string | null, onItemAdded?: (name:
     channelRef.current?.send({ type: 'broadcast', event: 'hello', payload: {} })
   }, [subscribed, peerOnline, channelRef])
 
-  return { state, connected: subscribed, posOnline: peerOnline }
+  // Link lost: whatever we have is no longer trustworthy.
+  useEffect(() => {
+    if (subscribed && peerOnline) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFresh(false)
+  }, [subscribed, peerOnline])
+
+  return { state, connected: subscribed, posOnline: peerOnline, ready: fresh }
 }

@@ -387,7 +387,12 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
     subtotal,
     discount: totalDiscount,
     total,
-    ...(selectedCustomer ? { customerName: selectedCustomer.name, pointsEarned } : {}),
+    ...(selectedCustomer ? {
+      customerName: selectedCustomer.name,
+      pointsEarned,
+      pointsBalance: selectedCustomer.current_points,
+      ...(redeemPoints > 0 ? { pointsRedeemed: redeemPoints } : {}),
+    } : {}),
     ...(displayStage === 'paying' ? {
       payment: {
         method: paymentMethod,
@@ -407,6 +412,15 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   useEffect(() => {
     setRedeemPoints(prev => Math.min(prev, maxRedeemablePoints))
   }, [maxRedeemablePoints])
+
+  // Clear the customer display's thank-you screen after a few seconds.
+  // Done in an effect so a newer sale's screen can't be wiped by the
+  // previous sale's leftover timer, and the timer is cleaned up on unmount.
+  useEffect(() => {
+    if (!paidInfo) return
+    const t = setTimeout(() => setPaidInfo(null), 8000)
+    return () => clearTimeout(t)
+  }, [paidInfo])
 
   const handleFinish = async () => {
     // Validation rules (REQ-05): can't redeem more points than owned,
@@ -483,9 +497,10 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
         total,
         change: paymentMethod === 'cash' ? Math.max(0, change) : 0,
         method: paymentMethod,
+        at: Date.now(),
         ...(selectedCustomer && pointsEarned > 0 ? { pointsEarned } : {}),
+        ...(selectedCustomer ? { pointsBalance: pointsBalanceAfter } : {}),
       })
-      setTimeout(() => setPaidInfo(null), 8000)
       setCart([]);
       setDiscount(0);
       setRedeemPoints(0);
