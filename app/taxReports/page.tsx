@@ -8,6 +8,7 @@ import {
   PackageMinus, Tag, AlertTriangle, CheckCircle2
 } from 'lucide-react'
 import { Product } from '@/src/types'
+import { fetchRefunds, refundsToSales } from '@/src/lib/refunds'
 
 type QuickPreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'custom'
 
@@ -62,7 +63,7 @@ export default function ReportsPage() {
     setError(null)
     try {
       // 1. ดึงยอดขายในช่วงวันที่เลือก
-      const { data: salesData, error: salesError } = await supabase
+      const { data: salesRows, error: salesError } = await supabase
         .from('sales')
         .select(`
           id, total_amount, payment_method, created_at, receipt_no, discount_amount,
@@ -73,6 +74,18 @@ export default function ReportsPage() {
         .order('created_at', { ascending: true })
 
       if (salesError) throw salesError
+
+      // Refunds (credit notes) in the same period, by the day the refund was made,
+      // as negative rows so sales, cost, profit and payment totals come out net.
+      let refundRows: any[] = []
+      try {
+        refundRows = refundsToSales(
+          await fetchRefunds(supabase, `${dateRange.start}T00:00:00`, `${dateRange.end}T23:59:59`)
+        )
+      } catch { /* refunds table not created yet: behave as before */ }
+      const salesData: any[] = [...(salesRows || []), ...refundRows]
+        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+      const billCount = salesData.filter((s: any) => !s._refund).length
 
       // 2. ดึงข้อมูลสินค้าเพื่อหาต้นทุน
       const { data: products } = await supabase.from('products').select('id, name, cost_price, category')
@@ -95,7 +108,7 @@ export default function ReportsPage() {
           const monthKey = sale.created_at.slice(0, 7) // YYYY-MM
           if (!monthAgg[monthKey]) monthAgg[monthKey] = { sale: 0, cost: 0, profit: 0, count: 0 }
           monthAgg[monthKey].sale += amount
-          monthAgg[monthKey].count += 1
+          if (!sale._refund) monthAgg[monthKey].count += 1
 
           let saleCost = 0
           let saleProfit = 0
@@ -125,7 +138,7 @@ export default function ReportsPage() {
         })
 
         setRawSales(enrichedSales)
-        setStats({ saleTotal: total, profitTotal: profit, count: salesData.length })
+        setStats({ saleTotal: total, profitTotal: profit, count: billCount })
         setPaymentStats({ cash, transfer, wallet })
         setCogsTotal(cogs)
         setDiscountTotal(discounts)
@@ -184,7 +197,7 @@ export default function ReportsPage() {
       "กำไร (บาท)": s._profit || 0,
       "ส่วนลด (บาท)": Number(s.discount_amount) || 0,
       "ช่องทางชำระ": s.payment_method === 'cash' ? 'เงินสด' : s.payment_method === 'wallet' ? 'เป๋าตัง' : 'เงินโอน',
-      "หมายเหตุ": ""
+      "หมายเหตุ": s._refund ? 'คืนสินค้า / ใบลดหนี้' : ""
     }))
 
     // Sheet 2: Monthly Summary

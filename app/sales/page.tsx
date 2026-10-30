@@ -1,14 +1,22 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { TrendingUp, Printer, Eye, X, FileText } from 'lucide-react'
+import { TrendingUp, Printer, Eye, X, FileText, Undo2 } from 'lucide-react'
 import { Sale, ReceiptDetail, Settings } from '@/src/types'
 import TaxInvoiceModal from '@/app/component/TaxInvoiceModal'
+import RefundModal from '@/app/component/RefundModal'
 import Receipt from '@/app/component/Receipt'
 import { printReceipt, getPrintConfig } from '@/src/lib/print'
+import { useRole } from '@/src/lib/RoleContext'
+import { fetchRefunds } from '@/src/lib/refunds'
 
 export default function SalesPage() {
+  const role = useRole()
   const [sales, setSales] = useState<Sale[]>([])
+  // Refunds made on the selected day (money out today) and total refunded per bill
+  const [refundedToday, setRefundedToday] = useState(0)
+  const [refundedBySale, setRefundedBySale] = useState<Record<string, number>>({})
+  const [refundSale, setRefundSale] = useState<Sale | null>(null)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   const [searchTerm, setSearchTerm] = useState('')
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -38,17 +46,45 @@ export default function SalesPage() {
       .order('created_at', { ascending: false })
     if (data) setSales(data)
 
+    // Refunds made today (by refund date) reduce today's takings and profit,
+    // even when the bill itself is from an earlier day.
+    let dayRefunds: Awaited<ReturnType<typeof fetchRefunds>> = []
+    try {
+      dayRefunds = await fetchRefunds(supabase, `${selectedDate}T00:00:00`, `${selectedDate}T23:59:59`)
+    } catch { /* refunds table not created yet: behave as before */ }
+    setRefundedToday(dayRefunds.reduce((s, r) => s + Number(r.refund_amount), 0))
+
+    // How much has already been refunded on each bill shown (for the badge)
+    if (data && data.length > 0) {
+      const { data: perSale } = await supabase
+        .from('refunds')
+        .select('sale_id, refund_amount')
+        .in('sale_id', data.map(s => s.id))
+      const map: Record<string, number> = {}
+      ;(perSale || []).forEach((r: { sale_id: string; refund_amount: number }) => {
+        map[r.sale_id] = (map[r.sale_id] || 0) + Number(r.refund_amount)
+      })
+      setRefundedBySale(map)
+    } else {
+      setRefundedBySale({})
+    }
+
     // Real profit: pull each line item for these sales plus the
     // current cost_price of each product, instead of guessing a flat
     // margin. This matches how /reports and /taxReports calculate it.
+    type Line = { quantity: number; price_at_sale: number; product_id: string }
+    let items: Line[] = []
     if (data && data.length > 0) {
-      const saleIds = data.map(s => s.id)
-      const { data: items } = await supabase
+      const { data: rows } = await supabase
         .from('sale_items')
         .select('quantity, price_at_sale, product_id')
-        .in('sale_id', saleIds)
+        .in('sale_id', data.map(s => s.id))
+      items = rows || []
+    }
+    const refundLines: Line[] = dayRefunds.flatMap(r => r.refund_items ?? [])
 
-      const productIds = Array.from(new Set((items || []).map(i => i.product_id)))
+    if (items.length > 0 || refundLines.length > 0) {
+      const productIds = Array.from(new Set([...items, ...refundLines].map(i => i.product_id)))
       const { data: products } = await supabase
         .from('products')
         .select('id, cost_price')
@@ -60,11 +96,11 @@ export default function SalesPage() {
           return acc
         }, {})
 
-      const profit = (items || []).reduce((sum: number, item: { quantity: number; price_at_sale: number; product_id: string }) => {
-        const cost = costMap[item.product_id] || 0
-        const sellPrice = Number(item.price_at_sale) || 0
-        return sum + (sellPrice - cost) * (Number(item.quantity) || 0)
-      }, 0)
+      const margin = (item: Line) =>
+        ((Number(item.price_at_sale) || 0) - (costMap[item.product_id] || 0)) * (Number(item.quantity) || 0)
+      const profit =
+        items.reduce((sum, item) => sum + margin(item), 0) -
+        refundLines.reduce((sum, item) => sum + margin(item), 0)
 
       setRealProfit(profit)
     } else {
@@ -102,7 +138,8 @@ export default function SalesPage() {
     }
   }
 
-  const dailyTotal = sales.reduce((sum, s) => sum + Number(s.total_amount), 0)
+  const grossTotal = sales.reduce((sum, s) => sum + Number(s.total_amount), 0)
+  const dailyTotal = grossTotal - refundedToday
 
   const paymentLabel = (method: string) => {
     if (method === 'cash') return 'เงินสด'
@@ -121,6 +158,11 @@ export default function SalesPage() {
         <div className="bg-white p-6 rounded-3xl shadow-sm border-l-8 border-blue-500">
           <p className="text-slate-500 text-sm">ยอดขายประจำวัน</p>
           <p className="text-4xl font-black text-blue-500">฿{dailyTotal.toLocaleString()}</p>
+          {refundedToday > 0 && (
+            <p className="text-xs font-bold text-red-500 mt-1">
+              หักคืนสินค้า -฿{refundedToday.toLocaleString()} (ยอดขาย ฿{grossTotal.toLocaleString()})
+            </p>
+          )}
         </div>
         <div className="bg-white p-6 rounded-3xl shadow-sm border-l-8 border-green-500">
           <p className="text-slate-500 text-sm">กำไรสุทธิ</p>
@@ -152,6 +194,7 @@ export default function SalesPage() {
               <th className="p-5 text-center">ดูใบเสร็จ</th>
               <th className="p-5 text-center">พิมพ์</th>
               <th className="p-5 text-center">ใบกำกับภาษี</th>
+              {role === 'admin' && <th className="p-5 text-center">คืนสินค้า</th>}
             </tr>
           </thead>
           <tbody>
@@ -159,7 +202,14 @@ export default function SalesPage() {
               .filter(s => s.receipt_no.toString().includes(searchTerm))
               .map((sale) => (
                 <tr key={sale.id} className="border-b hover:bg-slate-50">
-                  <td className="p-5 font-bold text black-80">{sale.receipt_no}</td>
+                  <td className="p-5 font-bold text black-80">
+                    {sale.receipt_no}
+                    {!!refundedBySale[sale.id] && (
+                      <span className="ml-2 px-2 py-0.5 rounded-full bg-red-50 text-red-500 text-[10px] font-black align-middle">
+                        {refundedBySale[sale.id] >= Number(sale.total_amount) ? 'คืนครบแล้ว' : `คืนแล้ว ฿${refundedBySale[sale.id].toLocaleString()}`}
+                      </span>
+                    )}
+                  </td>
                   <td className="p-5 text-right font-bold text-xl text-blue-600">
                     ฿{sale.total_amount.toLocaleString()}
                   </td>
@@ -195,6 +245,17 @@ export default function SalesPage() {
                       <FileText size={20} />
                     </button>
                   </td>
+                  {role === 'admin' && (
+                    <td className="p-5 text-center">
+                      <button
+                        onClick={() => setRefundSale(sale)}
+                        className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-all"
+                        title="คืนสินค้า"
+                      >
+                        <Undo2 size={20} />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             {sales.length === 0 && (
@@ -333,6 +394,14 @@ export default function SalesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {refundSale && (
+        <RefundModal
+          sale={refundSale}
+          onClose={() => setRefundSale(null)}
+          onDone={fetchSales}
+        />
       )}
 
       {invoiceSale && (

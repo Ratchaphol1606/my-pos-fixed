@@ -42,8 +42,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Refunds made today (by refund date) come off today's takings.
+  // If the refunds table doesn't exist yet this just reports no refunds.
+  const { data: refunds, error: refundError } = await supabase
+    .from("refunds")
+    .select("refund_amount")
+    .gte("created_at", startISO);
+  if (refundError) console.error("refunds query failed:", refundError.message);
+  const refundCount = refunds?.length ?? 0;
+  const refundTotal = refunds?.reduce((sum, r) => sum + Number(r.refund_amount ?? 0), 0) ?? 0;
+
   const orderCount = sales?.length ?? 0;
-  const totalSales = sales?.reduce((sum, s) => sum + (s.total_amount ?? 0), 0) ?? 0;
+  const grossSales = sales?.reduce((sum, s) => sum + (s.total_amount ?? 0), 0) ?? 0;
+  const totalSales = grossSales - refundTotal;
   const uniqueCustomers = new Set(
     sales?.filter((s) => s.customer_id).map((s) => s.customer_id)
   ).size;
@@ -58,6 +69,9 @@ export async function GET(req: NextRequest) {
   const message =
     `🧾 สรุปยอดวันนี้ (${dateLabel})\n\n` +
     `💰 ยอดขายรวม: ฿${totalSales.toLocaleString()}\n` +
+    (refundCount > 0
+      ? `↩️ คืนสินค้า: ${refundCount} ครั้ง (-฿${refundTotal.toLocaleString()})\n`
+      : "") +
     `📦 จำนวนบิล: ${orderCount}\n` +
     `👤 ลูกค้าสมาชิก: ${uniqueCustomers}\n` +
     `🚶 ลูกค้าทั่วไป: ${walkIns}`;
@@ -69,5 +83,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "push failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, totalSales, orderCount, uniqueCustomers });
+  return NextResponse.json({ ok: true, totalSales, refundTotal, orderCount, uniqueCustomers });
 }

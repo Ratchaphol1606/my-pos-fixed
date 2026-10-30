@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 
 import { Product, Settings } from '@/src/types'
+import { fetchRefunds, refundsToSales } from '@/src/lib/refunds'
 
 const DOW_LABELS_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 const PAYMENT_COLORS: Record<string, string> = {
@@ -82,7 +83,7 @@ export default function ReportsPage() {
       const fourteenDaysAgo = new Date(now.getTime() - (14 * 24 * 60 * 60 * 1000)).toISOString()
 
       // 1. ดึงข้อมูลจาก sales (now spans prev year -> current, for comparisons + trend)
-      const { data: salesData, error: salesError } = await supabase
+      const { data: salesRows, error: salesError } = await supabase
         .from('sales')
         .select(`
           id,
@@ -98,7 +99,15 @@ export default function ReportsPage() {
         .gte('created_at', startOfPrevYear)
 
       if (salesError) throw salesError
-      setAllSalesRaw(salesData || [])
+
+      // Refunds count as negative sales on the day they were made, so revenue,
+      // profit, trend and best sellers are all net of returns.
+      let refundRows: any[] = []
+      try {
+        refundRows = refundsToSales(await fetchRefunds(supabase, startOfPrevYear))
+      } catch { /* refunds table not created yet: behave as before */ }
+      const salesData: any[] = [...(salesRows || []), ...refundRows]
+      setAllSalesRaw(salesData)
 
       // 2. ดึงข้อมูลสินค้า (include is_active + stock for slow-mover detection)
       const { data: products } = await supabase.from('products').select('id, name, cost_price, is_active, stock')
@@ -216,7 +225,7 @@ export default function ReportsPage() {
           const method = s.payment_method || 'อื่นๆ'
           if (!payAgg[method]) payAgg[method] = { revenue: 0, count: 0 }
           payAgg[method].revenue += Number(s.total_amount) || 0
-          payAgg[method].count += 1
+          if (!s._refund) payAgg[method].count += 1
         })
         setPaymentMix(Object.entries(payAgg).map(([method, d]) => ({ method, revenue: d.revenue, count: d.count })))
 
@@ -224,7 +233,7 @@ export default function ReportsPage() {
         const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)).toISOString()
         const last30Sales = (salesData || []).filter(s => s.created_at >= thirtyDaysAgo)
         const soldProductIds = new Set<string>()
-        last30Sales.forEach((s: any) => s.sale_items?.forEach((item: any) => soldProductIds.add(item.product_id)))
+        last30Sales.forEach((s: any) => { if (!s._refund) s.sale_items?.forEach((item: any) => soldProductIds.add(item.product_id)) })
         const slow = (products || [])
           .filter((p: any) => p.is_active !== false && !soldProductIds.has(p.id))
           .map((p: any) => ({ name: p.name, stock: Number(p.stock) || 0 }))
@@ -297,9 +306,12 @@ export default function ReportsPage() {
       if (!dowAgg[dow]) dowAgg[dow] = { revenue: 0, count: 0 }
       if (!hourAgg[hr]) hourAgg[hr] = { revenue: 0, count: 0 }
       dowAgg[dow].revenue += Number(s.total_amount) || 0
-      dowAgg[dow].count += 1
       hourAgg[hr].revenue += Number(s.total_amount) || 0
-      hourAgg[hr].count += 1
+      // A refund isn't a customer visit: it nets the revenue but isn't counted as footfall
+      if (!s._refund) {
+        dowAgg[dow].count += 1
+        hourAgg[hr].count += 1
+      }
     })
     setDowData(DOW_LABELS_TH.map((label, i) => ({
       day: label, revenue: dowAgg[i]?.revenue || 0, count: dowAgg[i]?.count || 0

@@ -44,9 +44,30 @@ export interface PointTransaction {
   id: string;
   customer_id: string;
   sale_id: string | null;
-  type: 'earn' | 'redeem';
+  type: 'earn' | 'redeem' | 'refund';
   points_change: number;
   created_at: string;
+}
+
+export interface RefundItem {
+  product_id: string;
+  quantity: number;
+  price_at_sale: number;
+  net_amount: number;
+}
+
+export interface Refund {
+  id: string;
+  refund_no: string;
+  sale_id: string;
+  customer_id: string | null;
+  refund_amount: number;
+  payment_method: 'cash' | 'transfer';
+  reason: string | null;
+  points_taken_back: number;
+  points_restored: number;
+  created_at: string;
+  refund_items?: RefundItem[];
 }
 
 export interface ReceiptItem {
