@@ -174,10 +174,24 @@ export default function CustomerDisplayPage() {
 
         <div className="relative flex-1 min-h-0 bg-white rounded-3xl shadow-sm overflow-y-auto">
           {s.lines.map((l, i) => (
-            <div key={`${l.name}-${i}`} className="flex items-center gap-3 px-5 py-4 border-b last:border-b-0 border-gray-100">
-              <span className="min-w-0 flex-1 text-lg font-bold truncate">{l.name}</span>
-              <span className="text-gray-400 text-sm shrink-0">{baht(l.price)} × {l.qty}</span>
-              <span className="w-24 text-right text-lg font-black shrink-0">{baht(l.price * l.qty)}</span>
+            <div key={`${l.name}-${i}`} className="px-5 py-4 border-b last:border-b-0 border-gray-100">
+              <div className="flex items-center gap-3">
+                <span className="min-w-0 flex-1 text-lg font-bold truncate">{l.name}</span>
+                <span className="text-gray-400 text-sm shrink-0">{baht(l.price)} × {l.qty}</span>
+                <span className="w-24 text-right shrink-0">
+                  {l.saving ? (
+                    <>
+                      <span className="block text-xs text-gray-300 line-through">{baht(l.price * l.qty)}</span>
+                      <span className="block text-lg font-black text-emerald-600">{baht2(l.price * l.qty - l.saving)}</span>
+                    </>
+                  ) : (
+                    <span className="text-lg font-black">{baht(l.price * l.qty)}</span>
+                  )}
+                </span>
+              </div>
+              {!!l.saving && l.promo && (
+                <p className="text-sm font-bold text-emerald-600 mt-1">🏷 {l.promo} · ประหยัด {baht2(l.saving)}</p>
+              )}
             </div>
           ))}
           <div ref={listEndRef} />
@@ -198,10 +212,16 @@ export default function CustomerDisplayPage() {
               <span>ยอดรวม</span>
               <span>{baht(s.subtotal)}</span>
             </div>
+            {s.billPromo && (
+              <div className="flex justify-between text-green-600 font-bold text-sm">
+                <span className="pr-2">🏷 {s.billPromo.name}</span>
+                <span className="shrink-0">-{baht2(s.billPromo.saving)}</span>
+              </div>
+            )}
             {s.discount > 0 && (
               <div className="flex justify-between text-green-600 font-bold">
-                <span>ส่วนลด</span>
-                <span>-{baht(s.discount)}</span>
+                <span>ส่วนลดรวม</span>
+                <span>-{baht2(s.discount)}</span>
               </div>
             )}
             <div className="border-t pt-4">

@@ -5,9 +5,16 @@ import { Trash2, Edit3, Plus, Search, AlertCircle, X, Save, Tag, Barcode, Printe
 import { Product, Settings } from '@/src/types'
 import BarcodeLabel from '../component/BarcodeLabel'
 import CameraScanner from '../component/CameraScanner'
+import PromoEditor from '../component/PromoEditor'
+import { PRODUCT_CATEGORIES } from '@/src/lib/categories'
+import { useRole } from '@/src/lib/RoleContext'
+import { describePromo, type Promotion } from '@/src/lib/promotions'
 
 export default function ProductPage() {
+  const role = useRole()
   const [products, setProducts] = useState<Product[]>([])
+  // Active promos per product, shown as a badge in the table
+  const [promoByProduct, setPromoByProduct] = useState<Record<string, Promotion[]>>({})
   const [search, setSearch] = useState('')
   const [showHidden, setShowHidden] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -25,7 +32,16 @@ export default function ProductPage() {
 
   const idInputRef = useRef<HTMLInputElement>(null)
 
-  const categories = ['ทั่วไป','พลาสติก', 'อุปกรณ์ครัว', 'อุปกรณ์ไฟฟ้า', 'เครื่องแต่งกาย', 'กิฟต์ชอป', 'เครื่องมือช่าง','เครื่องนอน']
+  const categories = PRODUCT_CATEGORIES
+
+  const fetchPromos = async () => {
+    const { data } = await supabase.from('promotions').select('*').eq('scope', 'product').eq('is_active', true)
+    const map: Record<string, Promotion[]> = {}
+    ;((data ?? []) as Promotion[]).forEach(p => {
+      if (p.product_id) (map[p.product_id] ||= []).push(p)
+    })
+    setPromoByProduct(map)
+  }
 
   const fetchInitialData = async () => {
     // Settings
@@ -57,8 +73,9 @@ export default function ProductPage() {
     setLoading(false)
   }
 
-  useEffect(() => { 
+  useEffect(() => {
     fetchInitialData()
+    fetchPromos()
     setForm(f => ({ ...f, id: generateProductId() }))
     idInputRef.current?.focus()
   }, [])
@@ -294,6 +311,20 @@ export default function ProductPage() {
                   value={form.stock} onChange={e => setForm({...form, stock: Number(e.target.value)})} />
               </div>
             </div>
+
+            {/* Promotions for this product (admin only). Needs the product saved first. */}
+            {role === 'admin' && (
+              <div className="pt-6 border-t border-slate-100">
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-3 block">
+                  โปรโมชั่นของสินค้านี้
+                </label>
+                {isEditing ? (
+                  <PromoEditor scope="product" productId={form.id} onChanged={fetchPromos} />
+                ) : (
+                  <p className="text-xs text-slate-400 font-bold">บันทึกสินค้าก่อน แล้วกดแก้ไขเพื่อเพิ่มโปรโมชั่น</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className={`p-8 rounded-[2.5rem] flex flex-col justify-between transition-all ${isEditing ? 'bg-amber-600 text-white' : 'bg-slate-900 text-white'}`}>
@@ -361,6 +392,11 @@ export default function ProductPage() {
                     <td className="p-6">
                       <p className="font-black text-slate-800 tracking-tight">{p.name}</p>
                       <span className="text-[9px] font-black px-2 py-0.5 bg-slate-100 text-slate-500 rounded uppercase tracking-wider">{p.category || 'ทั่วไป'}</span>
+                      {(promoByProduct[p.id] ?? []).map(pr => (
+                        <span key={pr.id} className="ml-1 text-[9px] font-black px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded" title={pr.name}>
+                          🏷 {describePromo(pr)}
+                        </span>
+                      ))}
                     </td>
                     <td className="p-6 text-sm">
                       <div className="flex flex-col">

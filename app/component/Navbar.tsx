@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck, FlaskConical } from 'lucide-react'
+import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck, FlaskConical, Percent } from 'lucide-react'
 import { useRole } from '@/src/lib/RoleContext'
 import { supabase } from '@/src/lib/supabase'
 
@@ -23,6 +23,7 @@ export default function Navbar() {
     { name: 'คิดเงิน', href: '/', icon: <ShoppingCart size={20} />, adminOnly: false },
     { name: 'สินค้า', href: '/products', icon: <Package size={20} />, adminOnly: false },
     { name: 'ยอดขาย', href: '/sales', icon: <DollarSign size={20} />, adminOnly: false },
+    { name: 'โปรโมชั่น', href: '/promotions', icon: <Percent size={20} />, adminOnly: true },
     { name: 'รายงานสรุป', href: '/reports', icon: <BarChart3 size={20} />, adminOnly: true },
     { name: 'ภาษี', href: '/taxReports', icon: <DollarSignIcon size={20} />, adminOnly: true },
     { name: 'ตั้งค่า', href: '/settings', icon: <Settings size={20} />, adminOnly: true },

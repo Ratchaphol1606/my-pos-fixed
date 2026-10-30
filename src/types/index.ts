@@ -92,6 +92,8 @@ export interface ReceiptDetail {
   pointsEarned?: number;
   pointsRedeemed?: number;
   pointsBalance?: number;
+  // Promotions applied on this bill (already included in `discount`)
+  promos?: { name: string; text: string; saving: number }[];
 }
 
 export interface Settings {

@@ -9,6 +9,7 @@ import CameraScanner from './CameraScanner'
 import { Product, CartItem, ReceiptDetail, Settings, Customer } from '@/src/types'
 import { printReceipt } from '@/src/lib/print'
 import { useDisplayBroadcaster, getOrCreatePairCode, resetPairCode, type DisplayState } from '@/src/lib/customerDisplay'
+import { applyPromotions, type Promotion } from '@/src/lib/promotions'
 
 export default function POSScreen({ testMode = false }: { testMode?: boolean }) {
   const [products, setProducts] = useState<Product[]>([])
@@ -25,6 +26,21 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   const [settings, setSettings] = useState<Settings | null>(null)
   const [dailySubsidyUsed, setDailySubsidyUsed] = useState<number>(0)
   const [showCameraScanner, setShowCameraScanner] = useState(false)
+
+  // --- โปรโมชั่น --- active promos, refreshed whenever the screen comes back into view
+  const [promos, setPromos] = useState<Promotion[]>([])
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      const { data, error } = await supabase.from('promotions').select('*').eq('is_active', true)
+      // If the table doesn't exist yet, just run without promos.
+      if (!cancelled) setPromos(error ? [] : ((data ?? []) as Promotion[]))
+    }
+    load()
+    const onVisible = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', onVisible) }
+  }, [])
 
   // --- จอลูกค้า (live customer display) ---
   // Pair code is read from localStorage after mount (not during render)
@@ -346,10 +362,19 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
 
   const subtotal = cart.reduce((sum, item) => sum + (item.retail_price * item.qty), 0)
 
+  // Promotions first (line promos, then the bill-level promo on what's left),
+  // then the manual discount and points on top.
+  const promo = applyPromotions(
+    cart.map(item => ({ id: item.id, category: item.category ?? null, price: item.retail_price, qty: item.qty })),
+    promos,
+    { isMember: !!selectedCustomer },
+  )
+  const promoByLine = new Map(promo.lines.map(l => [l.id, l]))
+
   // แต้มที่ลูกค้าเลือกใช้แลกส่วนลด (REQ-05)
   const redeemUnit = settings?.redeem_point_use || 0
   const redeemValue = settings?.redeem_discount_thb || 0
-  const remainingPayable = Math.max(0, subtotal - discount)
+  const remainingPayable = Math.max(0, subtotal - promo.totalSavings - discount)
   // Points are capped by two things: how many the customer actually has,
   // and how many would be "useful" — redeeming more than what's needed
   // to cover the remaining bill is pointless and would otherwise let the
@@ -364,7 +389,9 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   const pointsDiscount = (redeemUnit > 0 && redeemPoints > 0)
     ? Math.floor(redeemPoints / redeemUnit) * redeemValue
     : 0
-  const totalDiscount = discount + pointsDiscount
+  // totalDiscount = promos + manual discount + points. It is what the receipt,
+  // the customer display and the "สุทธิ" line use.
+  const totalDiscount = promo.totalSavings + discount + pointsDiscount
   const total = Math.max(0, subtotal - totalDiscount)
   const change = paymentMethod === 'cash' ? receivedAmount - total : 0
 
@@ -383,7 +410,14 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
   const displayState: DisplayState = {
     stage: displayStage,
     shopName: settings?.shop_name ?? '',
-    lines: cart.map(item => ({ name: item.name, qty: item.qty, price: item.retail_price })),
+    lines: cart.map(item => {
+      const lp = promoByLine.get(item.id)
+      return {
+        name: item.name, qty: item.qty, price: item.retail_price,
+        ...(lp && lp.saving > 0 ? { promo: `${lp.promoName} (${lp.promoText})`, saving: lp.saving } : {}),
+      }
+    }),
+    ...(promo.bill ? { billPromo: { name: `${promo.bill.promoName} (${promo.bill.promoText})`, saving: promo.bill.saving } } : {}),
     subtotal,
     discount: totalDiscount,
     total,
@@ -457,6 +491,12 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
         : 'เป๋าตัง'  ,
         date: new Date().toLocaleString('th-TH'),
         receiptNo: currentReceiptNo,
+        ...(promo.totalSavings > 0 ? {
+          promos: [
+            ...promo.lines.filter(l => l.saving > 0).map(l => ({ name: l.promoName ?? '', text: l.promoText ?? '', saving: l.saving })),
+            ...(promo.bill ? [{ name: promo.bill.promoName, text: promo.bill.promoText, saving: promo.bill.saving }] : []),
+          ],
+        } : {}),
         ...(selectedCustomer ? {
           customerName: selectedCustomer.name,
           customerPhoneMasked: maskPhone(selectedCustomer.phone),
@@ -476,13 +516,17 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
         p_total_amount: total,
         p_received_amount: snapshot.received,
         p_change_amount: snapshot.change,
-        p_discount_amount: totalDiscount,
+        // Line promos are already inside price_at_sale below, so only the
+        // bill promo + manual discount + points count as the bill's discount.
+        // (Keeps profit reports and refunds correct without double counting.)
+        p_discount_amount: totalDiscount - promo.lineSavings,
         p_payment_method: paymentMethod,
         p_receipt_snapshot: snapshot,
         p_items: cart.map(item => ({
           product_id: item.id,
           quantity: item.qty,
-          price_at_sale: item.retail_price
+          // Effective price per unit after any line promo (e.g. 3 for ฿250 → 83.33)
+          price_at_sale: promoByLine.get(item.id)?.unitPrice ?? item.retail_price,
         })),
         p_customer_id: selectedCustomer?.id || null,
         p_points_earned: pointsEarned,
@@ -648,9 +692,21 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
                   </div>
                   <span className="text-[10px] text-gray-400 font-mono">฿{item.retail_price.toLocaleString()}</span>
                 </div>
+                {(promoByLine.get(item.id)?.saving ?? 0) > 0 && (
+                  <p className="mt-1 text-[10px] font-bold text-emerald-600">
+                    🏷 {promoByLine.get(item.id)?.promoName} · {promoByLine.get(item.id)?.promoText}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col items-end gap-1">
-                <p className="font-bold text-gray-900 text-sm">฿{(item.retail_price * item.qty).toLocaleString()}</p>
+                {(promoByLine.get(item.id)?.saving ?? 0) > 0 ? (
+                  <>
+                    <p className="text-[10px] text-gray-300 line-through">฿{(item.retail_price * item.qty).toLocaleString()}</p>
+                    <p className="font-bold text-emerald-600 text-sm">฿{(promoByLine.get(item.id)?.total ?? 0).toLocaleString()}</p>
+                  </>
+                ) : (
+                  <p className="font-bold text-gray-900 text-sm">฿{(item.retail_price * item.qty).toLocaleString()}</p>
+                )}
                 <button 
                   onClick={() => removeFromCart(item.id)}
                   className="p-1 text-red-300 hover:text-red-500 transition-colors"
@@ -794,6 +850,19 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
             <span>รวมเป็นเงิน</span>
             <span>฿{subtotal.toLocaleString()}</span>
           </div>
+
+          {promo.lineSavings > 0 && (
+            <div className="flex justify-between text-emerald-600 font-bold text-sm">
+              <span>🏷 โปรโมชั่นสินค้า</span>
+              <span>-฿{promo.lineSavings.toLocaleString()}</span>
+            </div>
+          )}
+          {promo.bill && (
+            <div className="flex justify-between text-emerald-600 font-bold text-sm">
+              <span className="truncate pr-2">🏷 {promo.bill.promoName} ({promo.bill.promoText})</span>
+              <span>-฿{promo.bill.saving.toLocaleString()}</span>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-4 py-2 border-y border-gray-200 border-dashed">
             <div className="flex items-center gap-2 text-red-500 font-bold">

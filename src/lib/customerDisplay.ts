@@ -55,6 +55,9 @@ export interface DisplayLine {
   name: string
   qty: number
   price: number
+  // Promotion applied to this line (price × qty minus `saving` is what's charged)
+  promo?: string
+  saving?: number
 }
 
 // Everything here is shown to the customer, so it deliberately leaves
@@ -68,6 +71,8 @@ export interface DisplayState {
   total: number
   customerName?: string
   pointsEarned?: number
+  // Bill-level promotion, e.g. spend ฿1,000 get ฿50 off
+  billPromo?: { name: string; saving: number }
   // Member's balance before this bill, and points used on it.
   pointsBalance?: number
   pointsRedeemed?: number

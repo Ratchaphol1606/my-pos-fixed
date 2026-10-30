@@ -317,6 +317,12 @@ export default function SalesPage() {
                 <span>ยอดรวม</span>
                 <span>฿{previewSale.receipt_snapshot.subtotal.toLocaleString()}</span>
               </div>
+              {previewSale.receipt_snapshot.promos?.map((p, i) => (
+                <div key={i} className="flex justify-between text-xs text-emerald-600">
+                  <span>โปร {p.name} ({p.text})</span>
+                  <span>-฿{p.saving.toLocaleString()}</span>
+                </div>
+              ))}
               {previewSale.receipt_snapshot.discount > 0 && (
                 <div className="flex justify-between">
                   <span>ส่วนลด</span>
