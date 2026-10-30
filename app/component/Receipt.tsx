@@ -1,296 +1,126 @@
 "use client"
-import { useEffect, useRef, useState } from 'react'
-import { QRCodeSVG } from 'qrcode.react'
-import { CheckCircle2, Link2, WifiOff } from 'lucide-react'
-import { normalizePairCode, useDisplayReceiver, type DisplayState } from '@/src/lib/customerDisplay'
+import { ReceiptDetail, Settings } from '@/src/types'
+import { getPrintConfig } from '@/src/lib/print'
 
-const TARGET_KEY = 'pos_display_target'
+interface ReceiptProps {
+  detail: ReceiptDetail | null;
+  settings: Settings | null;
+}
 
-const baht = (n: number) => `฿${n.toLocaleString()}`
-const baht2 = (n: number) =>
-  `฿${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+export default function Receipt({ detail, settings }: ReceiptProps) {
+  if (!detail) return null;
 
-const METHOD_LABEL = { cash: 'เงินสด', transfer: 'โอนเงิน / QR', wallet: 'เป๋าตัง' } as const
+  const contentWidthMm = getPrintConfig(settings).contentWidthMm;
 
-// Customer-facing screen. Open it on the iPad via the QR code in the POS
-// screen's "จอลูกค้า" dialog. It only renders what the POS broadcasts.
-export default function CustomerDisplayPage() {
-  const [pairCode, setPairCode] = useState<string | null>(null)
-  const [codeInput, setCodeInput] = useState('')
-  const [flash, setFlash] = useState<string | null>(null)
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const listEndRef = useRef<HTMLDivElement>(null)
-
-  const applyInitialCode = (code: string) => {
-    if (!code) return
-    setPairCode(code)
-    setCodeInput(code)
-  }
-
-  // Pick up the code from the QR link (?c=XXXXXX), falling back to the
-  // last one used on this device. Read after mount so server and client
-  // HTML match.
-  useEffect(() => {
-    let code = ''
-    try {
-      code = normalizePairCode(new URLSearchParams(window.location.search).get('c') ?? '')
-      if (code) localStorage.setItem(TARGET_KEY, code)
-      else code = localStorage.getItem(TARGET_KEY) ?? ''
-    } catch { /* ignore */ }
-    // One-time read of browser-only state after mount (can't be done
-    // during render without a server/client HTML mismatch).
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    applyInitialCode(code)
-  }, [])
-
-  const showFlash = (name: string) => {
-    setFlash(name)
-    if (flashTimer.current) clearTimeout(flashTimer.current)
-    flashTimer.current = setTimeout(() => setFlash(null), 1800)
-  }
-
-  const { state, connected, posOnline, ready } = useDisplayReceiver(pairCode, showFlash)
-
-  // Thank-you screen times out here too, so it can't get stuck if the POS
-  // tab was asleep when its own timer should have cleared it.
-  const [dismissedPaid, setDismissedPaid] = useState<string | null>(null)
-  const paidKey = state?.stage === 'paid' && state.paid
-    ? `${state.paid.at ?? 0}-${state.paid.total}`
-    : null
-  useEffect(() => {
-    if (!paidKey) return
-    const t = setTimeout(() => setDismissedPaid(paidKey), 10000)
-    return () => clearTimeout(t)
-  }, [paidKey])
-
-  const lineCount = state?.lines.length ?? 0
-  useEffect(() => {
-    listEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [lineCount])
-
-  const connectWith = () => {
-    const code = normalizePairCode(codeInput)
-    if (code.length < 4) return
-    try { localStorage.setItem(TARGET_KEY, code) } catch { /* ignore */ }
-    setPairCode(code)
-  }
-
-  // Covers the app navbar so the customer only sees this screen.
-  const shell = 'fixed inset-0 z-[100] bg-gray-100 text-gray-900 overflow-hidden flex flex-col'
-
-  if (!pairCode) {
-    return (
-      <div className={`${shell} items-center justify-center p-6`}>
-        <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm text-center">
-          <h1 className="text-xl font-black mb-1">จอลูกค้า</h1>
-          <p className="text-sm text-gray-500 mb-5">ใส่รหัสเชื่อมต่อจากหน้าจอเครื่องคิดเงิน</p>
-          <input
-            autoFocus
-            className="w-full p-4 text-center text-2xl font-mono tracking-[0.3em] uppercase rounded-xl bg-gray-50 outline-none focus:ring-2 ring-blue-500 mb-3"
-            placeholder="------"
-            value={codeInput}
-            maxLength={8}
-            onChange={(e) => setCodeInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') connectWith() }}
-          />
-          <button
-            onClick={connectWith}
-            className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2"
-          >
-            <Link2 size={18} /> เชื่อมต่อ
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (!connected || !posOnline || !ready) {
-    return (
-      <div className={`${shell} items-center justify-center text-center p-6`}>
-        <WifiOff size={56} className="text-gray-300 mb-4" />
-        <p className="text-2xl font-black text-gray-400">
-          {state?.shopName || 'จอลูกค้า'}
-        </p>
-        <p className="text-sm text-gray-400 mt-2">
-          {!connected ? 'กำลังเชื่อมต่อใหม่...' : !posOnline ? 'รอเครื่องคิดเงิน...' : 'กำลังโหลด...'}
-        </p>
-        <button
-          onClick={() => {
-            try { localStorage.removeItem(TARGET_KEY) } catch { /* ignore */ }
-            setPairCode(null)
-          }}
-          className="mt-8 text-xs text-gray-300 underline"
-        >
-          เปลี่ยนรหัสเชื่อมต่อ
-        </button>
-      </div>
-    )
-  }
-
-  const s: DisplayState | null = state
-
-  if (!s || s.stage === 'idle' || (paidKey !== null && paidKey === dismissedPaid)) {
-    return (
-      <div className={`${shell} items-center justify-center text-center bg-gradient-to-br from-blue-600 to-blue-800 text-white`}>
-        <p className="text-5xl font-black tracking-tight">ยินดีต้อนรับ</p>
-        <p className="text-xl text-blue-100 mt-3">{s?.shopName}</p>
-      </div>
-    )
-  }
-
-  if (s.stage === 'paid' && s.paid) {
-    return (
-      <div className={`${shell} items-center justify-center text-center bg-gradient-to-br from-emerald-500 to-emerald-700 text-white`}>
-        <CheckCircle2 size={96} className="mb-4" />
-        <p className="text-4xl font-black">ชำระเงินเรียบร้อย</p>
-        <p className="text-6xl font-black mt-6">{baht(s.paid.total)}</p>
-        {s.paid.method === 'cash' && s.paid.change > 0 && (
-          <p className="text-2xl mt-3 text-emerald-50">เงินทอน {baht(s.paid.change)}</p>
-        )}
-        {!!s.paid.pointsEarned && s.paid.pointsEarned > 0 && (
-          <p className="text-lg mt-3 text-emerald-100">ได้รับ {s.paid.pointsEarned} แต้ม</p>
-        )}
-        {s.paid.pointsBalance !== undefined && (
-          <p className="text-lg mt-1 text-emerald-100">แต้มสะสมคงเหลือ {s.paid.pointsBalance.toLocaleString()} แต้ม</p>
-        )}
-        <p className="text-xl mt-8 text-emerald-100">ขอบคุณที่ใช้บริการ</p>
-      </div>
-    )
-  }
-
-  const paying = s.stage === 'paying' && s.payment
-  const pay = s.payment
+  // Helper to safely format numbers
+  const formatNum = (val: any) => {
+    const n = Number(val);
+    return isNaN(n) ? '0' : n.toLocaleString();
+  };
 
   return (
-    <div className={`${shell} md:flex-row`}>
-      {/* Left: items */}
-      <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6">
-        <div className="flex items-baseline justify-between mb-3">
-          <h1 className="text-xl font-black">รายการสินค้า</h1>
-          {s.customerName && (
-            <span className="text-sm font-bold text-blue-600">สมาชิก: {s.customerName}</span>
-          )}
-        </div>
+    <div className="receipt-container pos-receipt text-black text-[11px] font-mono w-full px-[3mm] pt-[3mm] pb-[5mm] bg-white mx-auto" style={{ width: `${contentWidthMm}mm` }}>
+      <div className="text-center mb-4">
+        <h2 className="text-sm font-bold uppercase">{settings?.shop_name || 'บุญชอบเครื่องครัว'}</h2>
+        <p className="text-[9px]">{settings?.shop_address || '-'}</p>
+        <p className="text-[9px]">โทร : {settings?.shop_phone || '-'}</p>
+      </div>
 
-        <div className="relative flex-1 min-h-0 bg-white rounded-3xl shadow-sm overflow-y-auto">
-          {s.lines.map((l, i) => (
-            <div key={`${l.name}-${i}`} className="px-5 py-4 border-b last:border-b-0 border-gray-100">
-              <div className="flex items-center gap-3">
-                <span className="min-w-0 flex-1 text-lg font-bold truncate">{l.name}</span>
-                <span className="text-gray-400 text-sm shrink-0">{baht(l.price)} × {l.qty}</span>
-                <span className="w-24 text-right shrink-0">
-                  {l.saving ? (
-                    <>
-                      <span className="block text-xs text-gray-300 line-through">{baht(l.price * l.qty)}</span>
-                      <span className="block text-lg font-black text-emerald-600">{baht2(l.price * l.qty - l.saving)}</span>
-                    </>
-                  ) : (
-                    <span className="text-lg font-black">{baht(l.price * l.qty)}</span>
-                  )}
-                </span>
-              </div>
-              {!!l.saving && l.promo && (
-                <p className="text-sm font-bold text-emerald-600 mt-1">🏷 {l.promo} · ประหยัด {baht2(l.saving)}</p>
-              )}
+      <div className="border-b border-dashed mb-2 pb-2">
+        <p>เลขที่: {detail.receiptNo || '-'}</p>
+        <p>วันที่: {detail.date || '-'}</p>
+      </div>
+
+      <div className="mb-2">
+        {detail.items?.map((item, index) => (
+          <div key={index} className="mb-2 text-[11px] uppercase border-b border-gray-50 pb-1">
+            <div className="font-bold text-gray-800 mb-0.5">
+              {item.name}
             </div>
-          ))}
-          <div ref={listEndRef} />
+            <div className="flex justify-between items-end text-gray-600">
+              <div className="pl-2 italic">
+                {formatNum(item.price)} x {item.qty}
+              </div>
+              <div className="font-bold text-black">
+                {formatNum(item.price * item.qty)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t border-dashed pt-2 space-y-1">
+        <div className="flex justify-between">
+          <span>ยอดรวม:</span>
+          <span>{formatNum(detail.subtotal)}</span>
         </div>
 
-        {flash && !paying && (
-          <div className="mt-3 bg-emerald-500 text-white rounded-2xl px-5 py-3 font-bold text-lg truncate animate-pulse">
-            + {flash}
+        {detail.promos?.map((p, i) => (
+          <div key={i} className="flex justify-between text-[10px]">
+            <span>โปร {p.name} ({p.text}):</span>
+            <span>-{formatNum(p.saving)}</span>
+          </div>
+        ))}
+
+        {(Number(detail.discount) > 0) && (
+          <div className="flex justify-between text-black font-bold">
+            <span>ส่วนลดรวม:</span>
+            <span>-{formatNum(detail.discount)}</span>
+          </div>
+        )}
+
+        <div className="flex justify-between font-bold text-sm border-t border-black pt-1">
+          <span>สุทธิ:</span>
+          <span>฿{formatNum(detail.total)}</span>
+        </div>
+
+        <div className="flex justify-between pt-1">
+          <span>รับเงิน ({detail.paymentMethod || '-'}):</span>
+          <span>{formatNum(detail.received)}</span>
+        </div>
+
+        {detail.paymentMethod === 'เงินสด' && (
+          <div className="flex justify-between font-bold">
+            <span>เงินทอน:</span>
+            <span>{formatNum(detail.change)}</span>
           </div>
         )}
       </div>
 
-      {/* Right: totals / payment */}
-      <div className="md:w-[24rem] shrink-0 bg-white md:rounded-l-[2.5rem] shadow-2xl p-6 flex flex-col justify-center gap-4">
-        {!paying && (
-          <>
-            <div className="flex justify-between text-gray-500 font-bold">
-              <span>ยอดรวม</span>
-              <span>{baht(s.subtotal)}</span>
+      {detail.customerName && (
+        <div className="border-t border-dashed mt-2 pt-2 space-y-1">
+          <div className="flex justify-between">
+            <span>สมาชิก:</span>
+            <span>{detail.customerName}</span>
+          </div>
+          {detail.customerPhoneMasked && (
+            <div className="flex justify-between">
+              <span>เบอร์:</span>
+              <span>{detail.customerPhoneMasked}</span>
             </div>
-            {s.billPromo && (
-              <div className="flex justify-between text-green-600 font-bold text-sm">
-                <span className="pr-2">🏷 {s.billPromo.name}</span>
-                <span className="shrink-0">-{baht2(s.billPromo.saving)}</span>
-              </div>
-            )}
-            {s.discount > 0 && (
-              <div className="flex justify-between text-green-600 font-bold">
-                <span>ส่วนลดรวม</span>
-                <span>-{baht2(s.discount)}</span>
-              </div>
-            )}
-            <div className="border-t pt-4">
-              <p className="text-gray-400 font-bold text-sm">ยอดชำระ</p>
-              <p className="text-6xl font-black tracking-tighter text-blue-600">{baht(s.total)}</p>
+          )}
+          {(detail.pointsEarned ?? 0) > 0 && (
+            <div className="flex justify-between">
+              <span>แต้มที่ได้รับ:</span>
+              <span>+{formatNum(detail.pointsEarned)}</span>
             </div>
-            {!!s.pointsRedeemed && s.pointsRedeemed > 0 && (
-              <p className="text-sm font-bold text-green-600">ใช้แต้มแลกส่วนลด {s.pointsRedeemed.toLocaleString()} แต้ม</p>
-            )}
-            {!!s.pointsEarned && s.pointsEarned > 0 && (
-              <p className="text-sm font-bold text-blue-500">จะได้รับ {s.pointsEarned} แต้ม</p>
-            )}
-            {s.pointsBalance !== undefined && (
-              <p className="text-sm font-bold text-gray-400">แต้มสะสมปัจจุบัน {s.pointsBalance.toLocaleString()} แต้ม</p>
-            )}
-          </>
-        )}
-
-        {paying && pay && (
-          <>
-            <div>
-              <p className="text-gray-400 font-bold text-sm">ยอดชำระ · {METHOD_LABEL[pay.method]}</p>
-              <p className="text-6xl font-black tracking-tighter text-blue-600">{baht(s.total)}</p>
+          )}
+          {(detail.pointsRedeemed ?? 0) > 0 && (
+            <div className="flex justify-between">
+              <span>แต้มที่ใช้:</span>
+              <span>-{formatNum(detail.pointsRedeemed)}</span>
             </div>
+          )}
+          <div className="flex justify-between font-bold">
+            <span>แต้มคงเหลือ:</span>
+            <span>{formatNum(detail.pointsBalance)}</span>
+          </div>
+        </div>
+      )}
 
-            {pay.method === 'cash' && (
-              <div className="space-y-2 border-t pt-4">
-                <div className="flex justify-between text-xl font-bold text-gray-500">
-                  <span>เงินที่รับมา</span>
-                  <span>{pay.received ? baht(pay.received) : '—'}</span>
-                </div>
-                <div className="flex justify-between text-3xl font-black">
-                  <span>เงินทอน</span>
-                  <span className={(pay.change ?? 0) < 0 ? 'text-red-500' : 'text-green-600'}>
-                    {baht(Math.max(0, pay.change ?? 0))}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {pay.method === 'transfer' && (
-              <div className="flex flex-col items-center border-t pt-4">
-                {pay.qrPayload ? (
-                  <>
-                    <div className="bg-white p-3 rounded-2xl border">
-                      <QRCodeSVG value={pay.qrPayload} size={220} />
-                    </div>
-                    <p className="mt-3 font-bold text-blue-600 tracking-widest text-sm">สแกนเพื่อชำระเงิน</p>
-                  </>
-                ) : (
-                  <p className="text-gray-400 font-bold">กรุณารอสักครู่</p>
-                )}
-              </div>
-            )}
-
-            {pay.method === 'wallet' && (
-              <div className="space-y-2 border-t pt-4">
-                <div className="flex justify-between text-lg font-bold text-green-600">
-                  <span>รัฐบาลช่วยจ่าย</span>
-                  <span>-{baht2(pay.govShare ?? 0)}</span>
-                </div>
-                <div className="flex justify-between text-3xl font-black text-blue-600">
-                  <span>ลูกค้าจ่าย</span>
-                  <span>{baht2(pay.userShare ?? 0)}</span>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+      <div className="text-center mt-6 text-[9px] border-t border-dashed pt-4">
+        <p>ชำระด้วย: {detail.paymentMethod || '-'}</p>
+        <p className="mt-2">*** ขอบคุณที่ใช้บริการ ***</p>
       </div>
     </div>
   )
