@@ -9,7 +9,8 @@ import { supabase } from '@/src/lib/supabase'
 export default function Navbar() {
   const pathname = usePathname()
   const role = useRole()
-  const [shopName, setShopName] = useState('บุญชอบเครื่องครัว')
+  // Empty until the real name loads, so no hard-coded shop name ever flashes.
+  const [shopName, setShopName] = useState('')
 
   useEffect(() => {
     const fetchShopName = async () => {
@@ -17,7 +18,21 @@ export default function Navbar() {
       if (data?.shop_name) setShopName(data.shop_name)
     }
     fetchShopName()
+    // Settings page announces a new name right after saving, so the menu
+    // updates immediately instead of after a page reload.
+    const onChanged = (e: Event) => {
+      const name = (e as CustomEvent<string>).detail
+      if (typeof name === 'string' && name.trim()) setShopName(name.trim())
+      else fetchShopName()
+    }
+    window.addEventListener('shop-name-changed', onChanged)
+    return () => window.removeEventListener('shop-name-changed', onChanged)
   }, [])
+
+  // Browser tab title follows the shop name too
+  useEffect(() => {
+    if (shopName) document.title = `${shopName} — POS`
+  }, [shopName])
 
   const menuItems = [
     { name: 'คิดเงิน', href: '/', icon: <ShoppingCart size={20} />, adminOnly: false },
@@ -75,8 +90,8 @@ export default function Navbar() {
     ">
       {/* Logo — desktop only */}
       <div className="hidden md:block mb-6 px-2 pt-2">
-        <h1 className="text-xl font-black text-blue-600 tracking-tight">MY POS</h1>
-        <p className="text-[10px] text-gray-400 font-medium">{shopName}</p>
+        <h1 className="text-xl font-black text-blue-600 tracking-tight leading-tight break-words">{shopName || 'POS'}</h1>
+        <p className="text-[10px] text-gray-400 font-medium">ระบบ POS</p>
         {role && (
           <span className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${
             role === 'admin' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'

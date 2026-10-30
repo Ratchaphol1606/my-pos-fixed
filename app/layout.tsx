@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "My POS — บุญชอบเครื่องครัว",
-  description: "ระบบ POS บุญชอบเครื่องครัว สามแยก",
+  title: "My POS ",
+  description: "",
 };
 
 export default function RootLayout({

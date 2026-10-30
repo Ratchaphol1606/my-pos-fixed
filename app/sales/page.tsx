@@ -185,7 +185,7 @@ export default function SalesPage() {
         />
       </div>
 
-      <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-sm overflow-x-auto">
         <table className="w-full">
           <thead className="bg-slate-100 text-slate-600">
             <tr>
