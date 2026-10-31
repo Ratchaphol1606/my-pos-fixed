@@ -7,6 +7,11 @@ export const STAFF_EMAIL_DOMAIN =
 // Same rule as the profiles_username_format check in the database.
 export const USERNAME_RE = /^[a-z0-9._-]{3,30}$/
 
+// Password rules shared by the users page, the account page and their API routes.
+// bcrypt (what Supabase Auth uses) ignores everything past 72 bytes, so that is the cap.
+export const MIN_PASSWORD = 8
+export const MAX_PASSWORD_BYTES = 72
+
 export const normalizeUsername = (v: string) => v.trim().toLowerCase()
 
 export const usernameToEmail = (username: string) =>

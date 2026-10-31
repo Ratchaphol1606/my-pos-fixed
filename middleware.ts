@@ -9,7 +9,7 @@ import { SESSION_COOKIE, verifyClaims } from './src/lib/session'
 // API routes and by the database (RLS), which look the role up fresh each time.
 //
 // Paths an 'admin' role can access that a 'cashier' role cannot:
-const ADMIN_ONLY_PREFIXES = ['/settings', '/reports', '/taxReports', '/promotions', '/test']
+const ADMIN_ONLY_PREFIXES = ['/settings', '/reports', '/taxReports', '/promotions', '/users', '/test']
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -35,5 +35,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/settings/:path*', '/reports/:path*', '/taxReports/:path*', '/promotions/:path*', '/test/:path*'],
+  matcher: ['/settings/:path*', '/reports/:path*', '/taxReports/:path*', '/promotions/:path*', '/users/:path*', '/test/:path*'],
 }

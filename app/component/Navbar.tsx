@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck, FlaskConical, Percent } from 'lucide-react'
+import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck, FlaskConical, Percent, Users, UserCircle } from 'lucide-react'
 import { useRole, useAuth } from '@/src/lib/RoleContext'
 import { supabase } from '@/src/lib/supabase'
 
@@ -42,6 +42,7 @@ export default function Navbar() {
     { name: 'โปรโมชั่น', href: '/promotions', icon: <Percent size={20} />, adminOnly: true },
     { name: 'รายงานสรุป', href: '/reports', icon: <BarChart3 size={20} />, adminOnly: true },
     { name: 'ภาษี', href: '/taxReports', icon: <DollarSignIcon size={20} />, adminOnly: true },
+    { name: 'ผู้ใช้', href: '/users', icon: <Users size={20} />, adminOnly: true },
     { name: 'ตั้งค่า', href: '/settings', icon: <Settings size={20} />, adminOnly: true },
     { name: 'ทดสอบ', href: '/test', icon: <FlaskConical size={20} />, adminOnly: true },
   ].filter(item => !item.adminOnly || role === 'admin')
@@ -81,9 +82,16 @@ export default function Navbar() {
                 ล็อก
               </button>
             </div>
+            <Link
+              href="/account"
+              onClick={() => setShowConfirm(false)}
+              className="flex items-center justify-center gap-2 w-full mt-3 py-2 text-sm font-semibold text-gray-500 hover:text-blue-600"
+            >
+              <UserCircle size={16} /> บัญชีของฉัน (เปลี่ยน PIN / รหัสผ่าน)
+            </Link>
             <button
               onClick={handleLogout}
-              className="w-full mt-3 py-2 text-sm font-semibold text-gray-400 hover:text-red-500"
+              className="w-full py-2 text-sm font-semibold text-gray-400 hover:text-red-500"
             >
               ออกจากระบบ (เปลี่ยนผู้ใช้)
             </button>
@@ -112,7 +120,11 @@ export default function Navbar() {
             <ShieldCheck size={10} /> {role === 'admin' ? 'ผู้ดูแลระบบ' : 'แคชเชียร์'}
           </span>
         )}
-        {user && <p className="text-xs font-semibold text-gray-500 mt-1 truncate">{user.displayName}</p>}
+        {user && (
+          <Link href="/account" className="block text-xs font-semibold text-gray-500 hover:text-blue-600 mt-1 truncate">
+            {user.displayName}
+          </Link>
+        )}
       </div>
 
       {menuItems.map((item) => (
