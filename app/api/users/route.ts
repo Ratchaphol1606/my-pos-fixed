@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, type AuthOk } from '@/src/lib/serverAuth'
+import { logAudit } from '@/src/lib/audit'
 import {
   MAX_PASSWORD_BYTES,
   MIN_PASSWORD,
@@ -78,7 +79,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function create({ admin }: AuthOk, body: Record<string, unknown>) {
+const actorOf = (a: AuthOk) => ({ id: a.user.id, username: a.user.username, role: a.user.role })
+
+async function create(auth: AuthOk, body: Record<string, unknown>) {
+  const { admin } = auth
   const username = normalizeUsername(typeof body.username === 'string' ? body.username : '')
   const displayName = cleanName(body.displayName)
   if (!USERNAME_RE.test(username)) return bad('ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - ความยาว 3–30 ตัว')
@@ -111,14 +115,24 @@ async function create({ admin }: AuthOk, body: Record<string, unknown>) {
     await admin.auth.admin.deleteUser(created.user.id)
     return profileError.code === '23505' ? bad(NAME_TAKEN, 409) : bad('สร้างบัญชีไม่สำเร็จ', 500)
   }
+  await logAudit(admin, actorOf(auth), {
+    action: 'user.create', entity: 'profiles', entityId: created.user.id,
+    summary: `เพิ่มผู้ใช้ @${username} (${displayName})`,
+    newData: { username, display_name: displayName, role: body.role },
+  })
   return good({ id: created.user.id })
 }
 
-async function update({ admin, user }: AuthOk, body: Record<string, unknown>) {
+async function update(auth: AuthOk, body: Record<string, unknown>) {
+  const { admin, user } = auth
   if (!validId(body.id)) return bad('ไม่พบผู้ใช้')
   const id = body.id
 
-  const { data: target } = await admin.from('profiles').select('id, role, is_active').eq('id', id).maybeSingle()
+  const { data: target } = await admin
+    .from('profiles')
+    .select('id, username, display_name, role, is_active')
+    .eq('id', id)
+    .maybeSingle()
   if (!target) return bad('ไม่พบผู้ใช้', 404)
 
   const patch: { display_name?: string; role?: Role; is_active?: boolean } = {}
@@ -159,25 +173,50 @@ async function update({ admin, user }: AuthOk, body: Record<string, unknown>) {
     })
     if (banError) return bad('บันทึกแล้ว แต่ปรับสถานะการเข้าสู่ระบบไม่สำเร็จ กรุณาลองอีกครั้ง', 500)
   }
+
+  const was: Record<string, unknown> = { display_name: target.display_name, role: target.role, is_active: target.is_active }
+  const oldData: Record<string, unknown> = {}
+  for (const k of Object.keys(patch)) oldData[k] = was[k]
+  const statusChanged = patch.is_active !== undefined && patch.is_active !== target.is_active
+  const roleChanged = patch.role !== undefined && patch.role !== target.role
+  await logAudit(admin, actorOf(auth), {
+    action: statusChanged ? (patch.is_active ? 'user.enable' : 'user.disable') : roleChanged ? 'user.role' : 'user.update',
+    entity: 'profiles', entityId: id,
+    summary: `${statusChanged ? (patch.is_active ? 'เปิดใช้งาน' : 'ปิดใช้งาน') : 'แก้ไข'}ผู้ใช้ @${target.username}`,
+    oldData, newData: patch,
+  })
   return good()
 }
 
-async function resetPassword({ admin }: AuthOk, body: Record<string, unknown>) {
+async function resetPassword(auth: AuthOk, body: Record<string, unknown>) {
+  const { admin } = auth
   if (!validId(body.id)) return bad('ไม่พบผู้ใช้')
   if (!validPassword(body.password)) return bad(PASSWORD_RULE)
 
-  const { data: target } = await admin.from('profiles').select('id').eq('id', body.id).maybeSingle()
+  const { data: target } = await admin.from('profiles').select('id, username').eq('id', body.id).maybeSingle()
   if (!target) return bad('ไม่พบผู้ใช้', 404)
 
   const { error } = await admin.auth.admin.updateUserById(body.id, { password: body.password })
   if (error) return bad('เปลี่ยนรหัสผ่านไม่สำเร็จ', 500)
+  // The new password itself is never logged.
+  await logAudit(admin, actorOf(auth), {
+    action: 'user.reset_password', entity: 'profiles', entityId: target.id,
+    summary: `รีเซ็ตรหัสผ่านของ @${target.username}`,
+  })
   return good()
 }
 
-async function resetPin({ admin }: AuthOk, body: Record<string, unknown>) {
+async function resetPin(auth: AuthOk, body: Record<string, unknown>) {
+  const { admin } = auth
   if (!validId(body.id)) return bad('ไม่พบผู้ใช้')
+  const { data: target } = await admin.from('profiles').select('id, username').eq('id', body.id).maybeSingle()
+  if (!target) return bad('ไม่พบผู้ใช้', 404)
   // No PIN row = the person is asked to choose a new one at their next password login.
   const { error } = await admin.from('user_pins').delete().eq('user_id', body.id)
   if (error) return bad('รีเซ็ต PIN ไม่สำเร็จ', 500)
+  await logAudit(admin, actorOf(auth), {
+    action: 'user.reset_pin', entity: 'profiles', entityId: target.id,
+    summary: `รีเซ็ต PIN ของ @${target.username}`,
+  })
   return good()
 }

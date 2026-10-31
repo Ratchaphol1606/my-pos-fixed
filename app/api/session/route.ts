@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SESSION_COOKIE, nextCutoff, sessionCookieOptions, signClaims } from '@/src/lib/session'
 import { adminClient, bearerToken, fail, loadProfile, requireAuth } from '@/src/lib/serverAuth'
+import { logAudit } from '@/src/lib/audit'
 
 // The browser signs in with Supabase directly (username -> hidden email + password).
 // These routes turn that into a POS session:
@@ -59,6 +60,13 @@ export async function POST(req: NextRequest) {
   const exp = nextCutoff()
   const session = await signClaims({ t: 'session', u: user.id, r: user.role, n: user.displayName, exp })
   const unlock = await signClaims({ t: 'unlock', u: user.id, exp })
+
+  await logAudit(admin, { id: user.id, username: user.username, role: user.role }, {
+    action: 'login',
+    entity: 'profiles',
+    entityId: user.id,
+    summary: `เข้าสู่ระบบ ${user.displayName}`,
+  })
 
   const res = NextResponse.json({ ok: true, user, exp, hasPin: !!pinRow, unlock })
   res.cookies.set(SESSION_COOKIE, session, sessionCookieOptions)

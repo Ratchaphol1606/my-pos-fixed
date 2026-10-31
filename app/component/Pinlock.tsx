@@ -242,8 +242,10 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const fetchShopName = async () => {
-      const { data } = await supabase.from('settings').select('shop_name').eq('id', 1).single()
-      if (data?.shop_name) setShopName(data.shop_name)
+      // Before login the database only answers this one question (public_shop_name,
+      // see auth_migration_phase2.sql). If it isn't installed yet, the default name stays.
+      const { data } = await supabase.rpc('public_shop_name')
+      if (typeof data === 'string' && data.trim()) setShopName(data.trim())
     }
     fetchShopName()
   }, [])

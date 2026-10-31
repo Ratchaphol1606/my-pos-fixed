@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/src/lib/serverAuth'
+import { logAudit } from '@/src/lib/audit'
 
 // Refunds go through the server so only a logged-in admin who has unlocked with
 // their PIN can make one. process_refund is granted to the service role only
@@ -40,5 +41,12 @@ export async function POST(req: NextRequest) {
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 })
   }
+  await logAudit(auth.admin, { id: auth.user.id, username: auth.user.username, role: auth.user.role }, {
+    action: 'refund.create',
+    entity: 'sales',
+    entityId: saleId,
+    summary: `คืนสินค้า (${method === 'cash' ? 'เงินสด' : 'โอน'})${reason ? ` — ${reason}` : ''}`,
+    newData: { method, reason, items, result: data },
+  })
   return NextResponse.json({ ok: true, result: data })
 }

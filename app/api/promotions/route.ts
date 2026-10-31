@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validatePromo, type PromoInput } from '@/src/lib/promotions'
 import { requireAuth } from '@/src/lib/serverAuth'
+import { logAudit } from '@/src/lib/audit'
 
 // Promotions are read by the checkout with the normal browser key, but only a
 // logged-in admin who has unlocked with their PIN may create, change or delete
@@ -16,6 +17,10 @@ export async function POST(req: NextRequest) {
   const auth = await requireAuth(req, { admin: true, unlock: true })
   if (!auth.ok) return auth.res
   const supabase = auth.admin
+  const actor = { id: auth.user.id, username: auth.user.username, role: auth.user.role }
+  // The row as it was before this request (null for a brand-new promotion).
+  const snapshot = async (promoId: string) =>
+    (await supabase.from('promotions').select('*').eq('id', promoId).maybeSingle()).data ?? null
 
   const body = await req.json().catch(() => null)
   const action = body?.action
@@ -23,8 +28,13 @@ export async function POST(req: NextRequest) {
 
   if (action === 'delete') {
     if (!id) return NextResponse.json({ ok: false, error: 'ไม่พบรหัสโปรโมชั่น' }, { status: 400 })
+    const before = await snapshot(id)
     const { error } = await supabase.from('promotions').delete().eq('id', id)
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 })
+    await logAudit(supabase, actor, {
+      action: 'promotion.delete', entity: 'promotions', entityId: id,
+      summary: `ลบโปรโมชั่น ${before?.name ?? ''}`.trim(), oldData: before,
+    })
     return NextResponse.json({ ok: true })
   }
 
@@ -32,8 +42,14 @@ export async function POST(req: NextRequest) {
     if (!id || typeof body?.is_active !== 'boolean') {
       return NextResponse.json({ ok: false, error: 'ข้อมูลไม่ถูกต้อง' }, { status: 400 })
     }
+    const before = await snapshot(id)
     const { error } = await supabase.from('promotions').update({ is_active: body.is_active }).eq('id', id)
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 })
+    await logAudit(supabase, actor, {
+      action: 'promotion.toggle', entity: 'promotions', entityId: id,
+      summary: `${body.is_active ? 'เปิด' : 'ปิด'}โปรโมชั่น ${before?.name ?? ''}`.trim(),
+      oldData: { is_active: before?.is_active ?? null }, newData: { is_active: body.is_active },
+    })
     return NextResponse.json({ ok: true })
   }
 
@@ -63,10 +79,16 @@ export async function POST(req: NextRequest) {
     if (problem) return NextResponse.json({ ok: false, error: problem }, { status: 400 })
 
     const row = { ...input, name: input.name.slice(0, 80) }
+    const before = id ? await snapshot(id) : null
     const { error } = id
       ? await supabase.from('promotions').update(row).eq('id', id)
       : await supabase.from('promotions').insert({ ...row, is_active: true })
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 })
+    await logAudit(supabase, actor, {
+      action: id ? 'promotion.update' : 'promotion.create', entity: 'promotions', entityId: id,
+      summary: `${id ? 'แก้ไข' : 'สร้าง'}โปรโมชั่น ${row.name}`,
+      oldData: before, newData: row,
+    })
     return NextResponse.json({ ok: true })
   }
 

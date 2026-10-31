@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { signClaims } from '@/src/lib/session'
 import { fail, requireAuth } from '@/src/lib/serverAuth'
 import { MAX_PIN_ATTEMPTS, checkPin, hashPin, isValidPin } from '@/src/lib/pin'
+import { logAudit } from '@/src/lib/audit'
 
 // Per-user 4-digit PIN, the quick re-unlock after a page refresh.
 //   { action: 'verify', pin }  -> { ok, unlock }   needs a valid login
@@ -51,7 +52,15 @@ async function verify(req: NextRequest, pin: unknown) {
   if (!reserved || reserved.length === 0) return fail(429, 'busy', 'กรุณารอสักครู่แล้วลองใหม่').res
 
   if (!(await checkPin(pin, row.pin_hash))) {
-    if (used >= MAX_PIN_ATTEMPTS) return fail(423, 'pin_locked', 'PIN ถูกล็อก กรุณาเข้าสู่ระบบด้วยรหัสผ่าน').res
+    if (used >= MAX_PIN_ATTEMPTS) {
+      await logAudit(admin, { id: user.id, username: user.username, role: user.role }, {
+        action: 'pin.locked',
+        entity: 'profiles',
+        entityId: user.id,
+        summary: `PIN ผิดครบ ${MAX_PIN_ATTEMPTS} ครั้ง ถูกล็อก (${user.displayName})`,
+      })
+      return fail(423, 'pin_locked', 'PIN ถูกล็อก กรุณาเข้าสู่ระบบด้วยรหัสผ่าน').res
+    }
     return fail(401, 'bad_pin', 'PIN ไม่ถูกต้อง', { remaining: MAX_PIN_ATTEMPTS - used }).res
   }
 
@@ -81,5 +90,11 @@ async function setPin(req: NextRequest, pin: unknown) {
     { onConflict: 'user_id' },
   )
   if (error) return fail(500, 'db', 'บันทึก PIN ไม่สำเร็จ').res
+  await logAudit(auth.admin, { id: auth.user.id, username: auth.user.username, role: auth.user.role }, {
+    action: 'pin.set',
+    entity: 'profiles',
+    entityId: auth.user.id,
+    summary: `ตั้ง/เปลี่ยน PIN (${auth.user.displayName})`,
+  })
   return NextResponse.json({ ok: true })
 }

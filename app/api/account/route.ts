@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { bearerToken, requireAuth } from '@/src/lib/serverAuth'
+import { logAudit } from '@/src/lib/audit'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD } from '@/src/lib/staffEmail'
 
 // Self-service for whoever is logged in (any role, PIN-unlocked).
@@ -46,6 +47,13 @@ export async function POST(req: NextRequest) {
 
   const { error } = await auth.admin.auth.admin.updateUserById(auth.user.id, { password: newPassword })
   if (error) return bad('เปลี่ยนรหัสผ่านไม่สำเร็จ', 500)
+
+  await logAudit(auth.admin, { id: auth.user.id, username: auth.user.username, role: auth.user.role }, {
+    action: 'password.change',
+    entity: 'profiles',
+    entityId: auth.user.id,
+    summary: `เปลี่ยนรหัสผ่านของตัวเอง (${auth.user.displayName})`,
+  })
 
   // Anyone else who was logged in as this person on another device is signed out.
   const token = bearerToken(req)
