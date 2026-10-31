@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X, Undo2, CheckCircle2 } from 'lucide-react'
 import { supabase } from '@/src/lib/supabase'
+import { apiFetch } from '@/src/lib/apiFetch'
 import type { Sale } from '@/src/types'
 
 interface Line {
@@ -109,7 +110,7 @@ export default function RefundModal({ sale, onClose, onDone }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch('/api/refund', {
+      const res = await apiFetch('/api/refund', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

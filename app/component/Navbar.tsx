@@ -3,12 +3,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck, FlaskConical, Percent } from 'lucide-react'
-import { useRole } from '@/src/lib/RoleContext'
+import { useRole, useAuth } from '@/src/lib/RoleContext'
 import { supabase } from '@/src/lib/supabase'
 
 export default function Navbar() {
   const pathname = usePathname()
   const role = useRole()
+  const { user, lock, logout } = useAuth()
   // Empty until the real name loads, so no hard-coded shop name ever flashes.
   const [shopName, setShopName] = useState('')
 
@@ -47,9 +48,15 @@ export default function Navbar() {
 
   const [showConfirm, setShowConfirm] = useState(false)
 
-  const handleLock = async () => {
-    await fetch('/api/auth', { method: 'DELETE' })
-    window.location.href = '/'
+  // Lock = same person, back to the PIN pad. Log out = change user (password screen).
+  const handleLock = () => {
+    setShowConfirm(false)
+    lock()
+  }
+
+  const handleLogout = () => {
+    setShowConfirm(false)
+    void logout()
   }
 
   return (
@@ -74,6 +81,12 @@ export default function Navbar() {
                 ล็อก
               </button>
             </div>
+            <button
+              onClick={handleLogout}
+              className="w-full mt-3 py-2 text-sm font-semibold text-gray-400 hover:text-red-500"
+            >
+              ออกจากระบบ (เปลี่ยนผู้ใช้)
+            </button>
           </div>
         </div>
       )}
@@ -99,6 +112,7 @@ export default function Navbar() {
             <ShieldCheck size={10} /> {role === 'admin' ? 'ผู้ดูแลระบบ' : 'แคชเชียร์'}
           </span>
         )}
+        {user && <p className="text-xs font-semibold text-gray-500 mt-1 truncate">{user.displayName}</p>}
       </div>
 
       {menuItems.map((item) => (

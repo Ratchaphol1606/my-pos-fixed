@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { validatePromo, type PromoInput } from '@/src/lib/promotions'
+import { requireAuth } from '@/src/lib/serverAuth'
 
-// Promotions are read by the checkout with the normal browser key, but only an
-// admin PIN session may create, change or delete them. Writes use the service
-// role (the table has no write policy for the browser key).
+// Promotions are read by the checkout with the normal browser key, but only a
+// logged-in admin who has unlocked with their PIN may create, change or delete
+// them. Writes use the service role (the table has no write policy for the
+// browser key).
 
 const num = (v: unknown): number | null =>
   v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null
@@ -12,16 +13,9 @@ const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? 
 const day = (v: unknown): string | null => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null)
 
 export async function POST(req: NextRequest) {
-  if (req.cookies.get('pos_role')?.value !== 'admin') {
-    return NextResponse.json({ ok: false, error: 'ต้องใช้รหัสผู้ดูแล (Admin) เพื่อจัดการโปรโมชั่น' }, { status: 403 })
-  }
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) {
-    return NextResponse.json({ ok: false, error: 'เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า SUPABASE_SERVICE_ROLE_KEY' }, { status: 500 })
-  }
-  const supabase = createClient(url, key)
+  const auth = await requireAuth(req, { admin: true, unlock: true })
+  if (!auth.ok) return auth.res
+  const supabase = auth.admin
 
   const body = await req.json().catch(() => null)
   const action = body?.action

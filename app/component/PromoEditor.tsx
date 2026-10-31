@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Percent, Plus, Trash2, Pencil, X } from 'lucide-react'
 import { supabase } from '@/src/lib/supabase'
+import { apiFetch } from '@/src/lib/apiFetch'
 import {
   BILL_TYPES, LINE_TYPES, describePromo, validatePromo,
   type PromoScope, type PromoType, type Promotion,
@@ -43,7 +44,7 @@ const emptyForm = (scope: PromoScope): FormState => ({
 })
 
 async function callApi(body: object): Promise<{ ok: boolean; error?: string }> {
-  const res = await fetch('/api/promotions', {
+  const res = await apiFetch('/api/promotions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
