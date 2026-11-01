@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck, FlaskConical, Percent, Users, UserCircle, ScrollText } from 'lucide-react'
+import { ShoppingCart, Package, BarChart3, DollarSign, DollarSignIcon, Settings, LogOut, ShieldCheck, FlaskConical, Percent, Users, UserCircle, ScrollText, Store, ChevronDown } from 'lucide-react'
 import { useRole, useAuth } from '@/src/lib/RoleContext'
 import { supabase } from '@/src/lib/supabase'
 
@@ -39,14 +39,30 @@ export default function Navbar() {
     { name: 'คิดเงิน', href: '/', icon: <ShoppingCart size={20} />, adminOnly: false },
     { name: 'สินค้า', href: '/products', icon: <Package size={20} />, adminOnly: false },
     { name: 'ยอดขาย', href: '/sales', icon: <DollarSign size={20} />, adminOnly: false },
-    { name: 'โปรโมชั่น', href: '/promotions', icon: <Percent size={20} />, adminOnly: true },
     { name: 'รายงานสรุป', href: '/reports', icon: <BarChart3 size={20} />, adminOnly: true },
     { name: 'ภาษี', href: '/taxReports', icon: <DollarSignIcon size={20} />, adminOnly: true },
-    { name: 'ผู้ใช้', href: '/users', icon: <Users size={20} />, adminOnly: true },
-    { name: 'บันทึก', href: '/audit', icon: <ScrollText size={20} />, adminOnly: true },
-    { name: 'ตั้งค่า', href: '/settings', icon: <Settings size={20} />, adminOnly: true },
-    { name: 'ทดสอบ', href: '/test', icon: <FlaskConical size={20} />, adminOnly: true },
   ].filter(item => !item.adminOnly || role === 'admin')
+
+  const testItem = { name: 'ทดสอบ', href: '/test', icon: <FlaskConical size={20} /> }
+
+  // "ตั้งค่า" opens a small menu with everything an admin manages
+  const settingsItems = [
+    { name: 'ตั้งค่าร้าน', href: '/settings', icon: <Store size={18} /> },
+    { name: 'โปรโมชั่น', href: '/promotions', icon: <Percent size={18} /> },
+    { name: 'ผู้ใช้', href: '/users', icon: <Users size={18} /> },
+    { name: 'บันทึก', href: '/audit', icon: <ScrollText size={18} /> },
+  ]
+  const inSettingsGroup = settingsItems.some(i => pathname === i.href || pathname.startsWith(`${i.href}/`))
+  const isDesktop = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+
+  // Open on desktop when you are on one of its pages; on a phone it is a pop-up that
+  // closes after you pick something. Re-evaluated whenever the page changes.
+  const [settingsOpen, setSettingsOpen] = useState(() => inSettingsGroup && isDesktop())
+  const [lastPath, setLastPath] = useState(pathname)
+  if (lastPath !== pathname) {
+    setLastPath(pathname)
+    setSettingsOpen(inSettingsGroup && isDesktop())
+  }
 
   const [showConfirm, setShowConfirm] = useState(false)
 
@@ -100,6 +116,11 @@ export default function Navbar() {
         </div>
       )}
 
+    {/* Phone only: tap outside the settings pop-up to close it */}
+    {settingsOpen && (
+      <div className="fixed inset-0 z-30 md:hidden print:hidden" onClick={() => setSettingsOpen(false)} />
+    )}
+
     {/* Mobile: fixed bottom bar | Desktop: sticky left sidebar that stays while scrolling */}
     <nav className="
       fixed bottom-0 left-0 right-0 z-40 bg-white border-t
@@ -132,7 +153,7 @@ export default function Navbar() {
         <Link 
           key={item.href} 
           href={item.href}
-          className={`flex flex-col md:flex-row items-center gap-1 md:gap-3 px-3 py-2 rounded-2xl transition-all text-center md:text-left ${
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-3 px-1.5 md:px-3 py-2 rounded-2xl transition-all text-center md:text-left ${
             pathname === item.href
               ? 'bg-blue-600 text-white'
               : 'text-gray-500 hover:bg-gray-100'
@@ -143,10 +164,61 @@ export default function Navbar() {
         </Link>
       ))}
 
+      {role === 'admin' && (
+        <div className="md:w-full">
+          <button
+            onClick={() => setSettingsOpen(o => !o)}
+            aria-expanded={settingsOpen}
+            className={`w-full flex flex-col md:flex-row items-center gap-1 md:gap-3 px-1.5 md:px-3 py-2 rounded-2xl transition-all text-center md:text-left ${
+              inSettingsGroup ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            <Settings size={20} />
+            <span className="text-[10px] md:text-sm font-semibold md:flex-1">ตั้งค่า</span>
+            <ChevronDown size={14} className={`hidden md:block transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {settingsOpen && (
+            <div className="
+              absolute left-2 right-2 bottom-full mb-2 z-40 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 grid grid-cols-2 gap-1
+              md:static md:mb-0 md:z-auto md:shadow-none md:border-0 md:rounded-none md:p-0 md:mt-1 md:ml-3 md:pl-3 md:border-l md:border-gray-100 md:flex md:flex-col
+            ">
+              {settingsItems.map(item => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => { if (!isDesktop()) setSettingsOpen(false) }}
+                  className={`flex items-center gap-3 px-3 py-2.5 md:py-2 rounded-xl transition-all ${
+                    pathname === item.href || pathname.startsWith(`${item.href}/`)
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  {item.icon}
+                  <span className="text-sm font-semibold">{item.name}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {role === 'admin' && (
+        <Link
+          href={testItem.href}
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-3 px-1.5 md:px-3 py-2 rounded-2xl transition-all text-center md:text-left ${
+            pathname === testItem.href ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'
+          }`}
+        >
+          {testItem.icon}
+          <span className="text-[10px] md:text-sm font-semibold">{testItem.name}</span>
+        </Link>
+      )}
+
       {/* Lock screen — mobile: inline in bottom bar | desktop: pinned to bottom */}
       <button
         onClick={() => setShowConfirm(true)}
-        className="flex flex-col md:flex-row items-center gap-1 md:gap-3 px-3 py-2 rounded-2xl text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all text-center md:text-left md:mt-auto"
+        className="flex flex-col md:flex-row items-center gap-1 md:gap-3 px-1.5 md:px-3 py-2 rounded-2xl text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all text-center md:text-left md:mt-auto"
       >
         <LogOut size={20} />
         <span className="text-[10px] md:text-sm font-semibold">ล็อกหน้าจอ</span>
