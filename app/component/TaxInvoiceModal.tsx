@@ -65,6 +65,13 @@ export default function TaxInvoiceModal({ sale, settings, onClose }: TaxInvoiceM
 
   const vatEnabled = !!settings?.vat_enabled
   const total = Number(snap.total) || 0
+  // ยอดก่อนลด / ส่วนลดรวม (โปรโมชั่น + ส่วนลดมือ + แต้มที่ใช้) — บิลเก่าที่ไม่มีค่าให้คำนวณย้อนจากรายการ
+  const itemsSum = snap.items.reduce((s, it) => s + (Number(it.subtotal) || 0), 0)
+  const subtotal = Number(snap.subtotal) || itemsSum
+  const discount = Number(snap.discount) || Math.max(0, subtotal - total)
+  const promoLines = (snap.promos ?? []).filter(p => p.saving > 0)
+  const promoSum = promoLines.reduce((s, p) => s + p.saving, 0)
+  const otherDiscount = Math.max(0, discount - promoSum)
   // ราคารวม VAT แล้ว (วิธีคิดแบบ Thai retail ทั่วไป) — ถอดภาษีออกจากยอดสุทธิ
   const productValue = vatEnabled ? total / 1.07 : total
   const vatAmount = vatEnabled ? total - productValue : 0
@@ -225,8 +232,26 @@ export default function TaxInvoiceModal({ sale, settings, onClose }: TaxInvoiceM
         <div style={{ width: 320, fontSize: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
             <span style={{ color: '#64748b' }}>รวมเป็นเงิน</span>
-            <span>{money(total)}</span>
+            <span>{money(subtotal)}</span>
           </div>
+          {discount > 0.004 && (
+            <>
+              {promoLines.map((p, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', gap: 12 }}>
+                  <span style={{ color: '#64748b' }}>โปรโมชั่น: {p.name}{p.text ? ` (${p.text})` : ''}</span>
+                  <span style={{ color: '#dc2626', whiteSpace: 'nowrap' }}>-{money(p.saving)}</span>
+                </div>
+              ))}
+              {otherDiscount > 0.004 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                  <span style={{ color: '#64748b' }}>
+                    {promoLines.length > 0 ? 'ส่วนลดอื่น ๆ / แต้มสะสม' : 'ส่วนลด'}
+                  </span>
+                  <span style={{ color: '#dc2626' }}>-{money(otherDiscount)}</span>
+                </div>
+              )}
+            </>
+          )}
           {vatEnabled && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
