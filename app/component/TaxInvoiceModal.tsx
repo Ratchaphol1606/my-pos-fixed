@@ -1,5 +1,5 @@
 "use client"
-import { useState, useRef } from 'react'
+import { useState, useRef, useLayoutEffect } from 'react'
 import { X, Download } from 'lucide-react'
 import { Sale, Settings } from '@/src/types'
 
@@ -8,6 +8,10 @@ interface TaxInvoiceModalProps {
   settings: Settings | null
   onClose: () => void
 }
+
+// A4 ที่ 96dpi = 794 x 1123 px — ใช้ขนาดคงที่เสมอ ไม่ขึ้นกับหน้าจออุปกรณ์
+const A4_W = 794
+const A4_H = 1123
 
 const paymentLabel = (method: string) => {
   if (method === 'cash') return 'เงินสด'
@@ -24,10 +28,37 @@ const thaiMonths = [
 const formatThaiDate = (d: Date) =>
   `${d.getDate()} ${thaiMonths[d.getMonth()]} ${d.getFullYear() + 543}`
 
+const money = (n: number) =>
+  n.toLocaleString(undefined, { minimumFractionDigits: 2 })
+
 export default function TaxInvoiceModal({ sale, settings, onClose }: TaxInvoiceModalProps) {
   const [useCurrentDate, setUseCurrentDate] = useState(true)
   const [downloading, setDownloading] = useState(false)
-  const printRef = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(1)
+  const [sheetH, setSheetH] = useState(A4_H)
+  const previewRef = useRef<HTMLDivElement>(null) // กรอบพรีวิว (ใช้วัดความกว้างเพื่อย่อ)
+  const printRef = useRef<HTMLDivElement>(null)   // ใบ A4 ขนาดจริง (นอกจอ) สำหรับแปลงเป็น PDF
+
+  // ย่อพรีวิวให้พอดีความกว้างจอ แต่ตัวใบจริงยังเป็น A4 เต็มขนาด
+  useLayoutEffect(() => {
+    const box = previewRef.current
+    const sheet = printRef.current
+    if (!box) return
+    const updateScale = () => setScale(Math.min(1, box.clientWidth / A4_W))
+    updateScale()
+    const ro = new ResizeObserver(updateScale)
+    ro.observe(box)
+    let ro2: ResizeObserver | null = null
+    if (sheet) {
+      setSheetH(sheet.offsetHeight || A4_H)
+      ro2 = new ResizeObserver(() => setSheetH(sheet.offsetHeight || A4_H))
+      ro2.observe(sheet)
+    }
+    return () => {
+      ro.disconnect()
+      ro2?.disconnect()
+    }
+  }, [])
 
   const snap = sale.receipt_snapshot
   if (!snap) return null
@@ -53,21 +84,198 @@ export default function TaxInvoiceModal({ sale, settings, onClose }: TaxInvoiceM
         scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
+        width: A4_W,
+        windowWidth: A4_W,
+        onclone: (_doc, cloned) => {
+          // ตัวจริงถูกซ่อนไว้นอกจอ — ดึงกลับมาที่ 0,0 ในสำเนาที่ใช้แคปเท่านั้น
+          const wrap = cloned.parentElement
+          if (wrap) {
+            wrap.style.position = 'absolute'
+            wrap.style.left = '0px'
+            wrap.style.top = '0px'
+          }
+        },
       })
-      const imgData = canvas.toDataURL('image/png')
 
-      // A4 ขนาด 210x297mm — สเกลความสูงของภาพให้พอดีความกว้างหน้ากระดาษ
+      // A4 210x297mm — ตัดภาพเป็นหน้าละ 297mm (ปกติ 1 หน้า, รายการยาวจะต่อหน้า 2, 3...)
       const pdf = new jsPDF('p', 'mm', 'a4')
-      const pageWidth = pdf.internal.pageSize.getWidth()
-      const imgHeight = (canvas.height * pageWidth) / canvas.width
-      pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, imgHeight)
-      pdf.save(`invoice-${snap.receiptNo}.pdf`)
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
+      const pagePx = Math.floor((canvas.width * pageH) / pageW)
+      const pages = Math.max(1, Math.ceil((canvas.height - 2) / pagePx))
+
+      for (let i = 0; i < pages; i++) {
+        const sliceH = Math.min(pagePx, canvas.height - i * pagePx)
+        const slice = document.createElement('canvas')
+        slice.width = canvas.width
+        slice.height = sliceH
+        const ctx = slice.getContext('2d')
+        if (!ctx) throw new Error('canvas ไม่พร้อมใช้งาน')
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, slice.width, slice.height)
+        ctx.drawImage(canvas, 0, i * pagePx, canvas.width, sliceH, 0, 0, canvas.width, sliceH)
+        if (i > 0) pdf.addPage()
+        pdf.addImage(slice.toDataURL('image/png'), 'PNG', 0, 0, pageW, (sliceH * pageW) / canvas.width)
+      }
+
+      // ดาวน์โหลดผ่านลิงก์ blob (ใช้ได้บน iPad/iPhone Safari ที่ pdf.save() บางทีเงียบ)
+      const blob = pdf.output('blob')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `invoice-${snap.receiptNo}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch (err: any) {
       alert('สร้าง PDF ไม่สำเร็จ: ' + err.message)
     } finally {
       setDownloading(false)
     }
   }
+
+  // ใบ A4 เต็มหน้า — ขนาดคงที่ (px) ทั้งหมด เพื่อให้หน้าตาเหมือนกันทุกอุปกรณ์
+  const sheet = (
+    <div
+      style={{
+        width: A4_W,
+        minHeight: A4_H,
+        boxSizing: 'border-box',
+        padding: '56px 56px 64px',
+        background: '#ffffff',
+        color: '#000000',
+        fontFamily: 'sans-serif',
+        fontSize: 14,
+        lineHeight: 1.5,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* หัวเอกสาร */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ maxWidth: 360 }}>
+          <div style={{ fontSize: 26, fontWeight: 700 }}>{settings?.shop_name || ''}</div>
+          {settings?.shop_address && (
+            <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>{settings.shop_address}</div>
+          )}
+          {settings?.shop_phone && (
+            <div style={{ fontSize: 13, color: '#475569' }}>โทร {settings.shop_phone}</div>
+          )}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 22, fontWeight: 700 }}>ใบเสร็จรับเงิน / ใบกำกับภาษี</div>
+          <div style={{ fontSize: 14, color: '#64748b', marginTop: 6 }}>เลขที่ {snap.receiptNo}</div>
+          <div style={{ fontSize: 14, color: '#64748b' }}>
+            วันที่ {dateText || '........................................'}
+          </div>
+        </div>
+      </div>
+
+      {/* กล่องลูกค้า */}
+      <div
+        style={{
+          border: '1px solid #cbd5e1',
+          borderRadius: 8,
+          padding: '12px 16px',
+          margin: '32px 0 28px',
+        }}
+      >
+        <div style={{ fontSize: 12, color: '#94a3b8' }}>ลูกค้า</div>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>{snap.customerName || 'ลูกค้าทั่วไป'}</div>
+      </div>
+
+      {/* ตารางรายการ */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 14 }}>
+        <colgroup>
+          <col style={{ width: 44 }} />
+          <col />
+          <col style={{ width: 80 }} />
+          <col style={{ width: 120 }} />
+          <col style={{ width: 130 }} />
+        </colgroup>
+        <thead>
+          <tr style={{ background: '#f1f5f9', color: '#475569', fontSize: 13 }}>
+            <th style={{ padding: '10px 12px', textAlign: 'left' }}>#</th>
+            <th style={{ padding: '10px 12px', textAlign: 'left' }}>รายการ</th>
+            <th style={{ padding: '10px 12px', textAlign: 'right' }}>จำนวน</th>
+            <th style={{ padding: '10px 12px', textAlign: 'right' }}>ราคา/หน่วย</th>
+            <th style={{ padding: '10px 12px', textAlign: 'right' }}>จำนวนเงิน</th>
+          </tr>
+        </thead>
+        <tbody>
+          {snap.items.map((item, idx) => (
+            <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+              <td style={{ padding: '10px 12px', color: '#94a3b8', verticalAlign: 'top' }}>{idx + 1}</td>
+              <td style={{ padding: '10px 12px', verticalAlign: 'top', wordBreak: 'break-word' }}>{item.name}</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>{item.qty}</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>{item.price.toLocaleString()}</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top' }}>{item.subtotal.toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* ชำระเงิน + ยอดรวม */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 28 }}>
+        <div>
+          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 2 }}>ชำระโดย</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{paymentLabel(snap.paymentMethod)}</div>
+        </div>
+        <div style={{ width: 320, fontSize: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+            <span style={{ color: '#64748b' }}>รวมเป็นเงิน</span>
+            <span>{money(total)}</span>
+          </div>
+          {vatEnabled && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                <span style={{ color: '#64748b' }}>มูลค่าสินค้า/บริการ</span>
+                <span>{money(productValue)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                <span style={{ color: '#64748b' }}>ภาษีมูลค่าเพิ่ม 7.00%</span>
+                <span>{money(vatAmount)}</span>
+              </div>
+            </>
+          )}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontSize: 18,
+              fontWeight: 700,
+              borderTop: '1px solid #cbd5e1',
+              paddingTop: 8,
+              marginTop: 6,
+            }}
+          >
+            <span>ยอดสุทธิ</span>
+            <span>{money(total)}</span>
+          </div>
+        </div>
+      </div>
+
+      {vatEnabled && (
+        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 10 }}>
+          ราคาดังกล่าวได้รวมภาษีมูลค่าเพิ่มแล้ว
+        </div>
+      )}
+
+      {/* ดันลายเซ็นลงล่างหน้ากระดาษ */}
+      <div style={{ flex: 1, minHeight: 80 }} />
+
+      {/* ลายเซ็น */}
+      <div style={{ display: 'flex', gap: 64, textAlign: 'center', fontSize: 13 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 8 }}>ผู้รับสินค้า / วันที่</div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 8 }}>ผู้รับเงิน</div>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div
@@ -106,102 +314,31 @@ export default function TaxInvoiceModal({ sale, settings, onClose }: TaxInvoiceM
           </label>
         </div>
 
-        {/* เอกสาร A4 สำหรับแปลงเป็น PDF */}
-        <div className="p-5">
+        {/* พรีวิว A4 (ย่อตามความกว้างจอ) */}
+        <div className="px-3 py-4 sm:p-5">
           <div
-            ref={printRef}
-            className="bg-white text-black p-8 border border-slate-200"
-            style={{ fontFamily: 'sans-serif', width: '100%' }}
+            ref={previewRef}
+            style={{
+              width: '100%',
+              height: sheetH * scale,
+              overflow: 'hidden',
+              border: '1px solid #e2e8f0',
+              background: '#ffffff',
+            }}
           >
-            {/* หัวเอกสาร */}
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <p className="text-xl font-bold">{settings?.shop_name || ''}</p>
-                {settings?.shop_address && <p className="text-xs text-slate-600 max-w-[260px]">{settings.shop_address}</p>}
-                {settings?.shop_phone && <p className="text-xs text-slate-600">โทร {settings.shop_phone}</p>}
-              </div>
-              <div className="text-right">
-                <p className="text-lg font-bold">ใบเสร็จรับเงิน / ใบกำกับภาษี</p>
-                <p className="text-xs text-slate-500 mt-1">เลขที่ {snap.receiptNo}</p>
-                <p className="text-xs text-slate-500">
-                  วันที่ {dateText || '........................................'}
-                </p>
-              </div>
+            <div style={{ width: A4_W, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+              {sheet}
             </div>
+          </div>
+        </div>
 
-            {/* กล่องลูกค้า */}
-            <div className="border border-slate-300 rounded-xl p-3 mb-5">
-              <p className="text-[10px] text-slate-400">ลูกค้า</p>
-              <p className="font-bold">{snap.customerName || 'ลูกค้าทั่วไป'}</p>
-            </div>
-
-            {/* ตารางรายการ */}
-            <table className="w-full text-sm mb-5">
-              <thead>
-                <tr className="bg-slate-100 text-slate-600 text-xs">
-                  <th className="p-2 text-left">#</th>
-                  <th className="p-2 text-left">รายการ</th>
-                  <th className="p-2 text-right">จำนวน</th>
-                  <th className="p-2 text-right">ราคา/หน่วย</th>
-                  <th className="p-2 text-right">จำนวนเงิน</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snap.items.map((item, idx) => (
-                  <tr key={idx} className="border-b border-slate-100">
-                    <td className="p-2 text-slate-400">{idx + 1}</td>
-                    <td className="p-2">{item.name}</td>
-                    <td className="p-2 text-right">{item.qty}</td>
-                    <td className="p-2 text-right">{item.price.toLocaleString()}</td>
-                    <td className="p-2 text-right">{item.subtotal.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* ชำระเงิน + ยอดรวม */}
-            <div className="flex justify-between items-start">
-              <div className="text-sm">
-                <p className="text-slate-500 text-xs mb-1">ชำระโดย</p>
-                <p className="font-bold">{paymentLabel(snap.paymentMethod)}</p>
-              </div>
-              <div className="w-64 text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">รวมเป็นเงิน</span>
-                  <span>{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                </div>
-                {vatEnabled && (
-                  <>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">มูลค่าสินค้า/บริการ</span>
-                      <span>{productValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">ภาษีมูลค่าเพิ่ม 7.00%</span>
-                      <span>{vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  </>
-                )}
-                <div className="flex justify-between font-bold text-base border-t border-slate-300 pt-1 mt-1">
-                  <span>ยอดสุทธิ</span>
-                  <span>{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                </div>
-              </div>
-            </div>
-
-            {vatEnabled && (
-              <p className="text-[10px] text-slate-400 mt-2">ราคาดังกล่าวได้รวมภาษีมูลค่าเพิ่มแล้ว</p>
-            )}
-
-            {/* ลายเซ็น */}
-            <div className="grid grid-cols-2 gap-8 mt-16 text-center text-xs">
-              <div>
-                <div className="border-t border-slate-400 pt-2">ผู้รับสินค้า / วันที่</div>
-              </div>
-              <div>
-                <div className="border-t border-slate-400 pt-2">ผู้รับเงิน</div>
-              </div>
-            </div>
+        {/* ใบ A4 ขนาดจริงซ่อนนอกจอ — ใช้แคปเป็น PDF เท่านั้น */}
+        <div
+          aria-hidden="true"
+          style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none' }}
+        >
+          <div ref={printRef} style={{ width: A4_W }}>
+            {sheet}
           </div>
         </div>
 
