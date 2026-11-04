@@ -4,7 +4,7 @@ import { supabase } from '@/src/lib/supabase'
 import { 
   TrendingUp, ChevronLeft, ChevronRight, Trophy, 
   DollarSign, Calendar as CalendarIcon, AlertCircle, ShoppingBag,
-  Clock, CalendarDays, Wallet, PackageX, ArrowUp, ArrowDown, Minus
+  Clock, CalendarDays, Wallet, PackageX, ArrowUp, ArrowDown, Minus, Layers
 } from 'lucide-react'
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -13,6 +13,7 @@ import {
 
 import { Product, Settings } from '@/src/types'
 import { fetchRefunds, refundsToSales } from '@/src/lib/refunds'
+import { WHOLESALE_NAME } from '@/src/lib/priceTiers'
 
 const DOW_LABELS_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 const PAYMENT_COLORS: Record<string, string> = {
@@ -45,6 +46,10 @@ export default function ReportsPage() {
   const [dowData, setDowData] = useState<{ day: string; revenue: number; count: number }[]>([])
   const [hourData, setHourData] = useState<{ hour: string; revenue: number; count: number }[]>([])
   const [paymentMix, setPaymentMix] = useState<{ method: string; revenue: number; count: number }[]>([])
+  // Wholesale (ราคาส่ง) vs retail, this month. "Wholesale bill" = at least one line sold at a tier price.
+  const [wholesaleMix, setWholesaleMix] = useState<{ bills: number; billRevenue: number; discount: number; retailBills: number; retailRevenue: number }>(
+    { bills: 0, billRevenue: 0, discount: 0, retailBills: 0, retailRevenue: 0 }
+  )
   const [slowMovers, setSlowMovers] = useState<{ name: string; stock: number }[]>([])
   const [comparisons, setComparisons] = useState({ weekChange: 0, monthChange: 0, yearChange: 0 })
   const [margins, setMargins] = useState({ week: 0, month: 0, year: 0 })
@@ -90,6 +95,7 @@ export default function ReportsPage() {
           total_amount,
           created_at,
           payment_method,
+          promos:receipt_snapshot->promos,
           sale_items (
             product_id,
             quantity,
@@ -229,6 +235,21 @@ export default function ReportsPage() {
         })
         setPaymentMix(Object.entries(payAgg).map(([method, d]) => ({ method, revenue: d.revenue, count: d.count })))
 
+        // Wholesale vs retail bills, this month (refunds are skipped: they carry no promo info)
+        const ws = { bills: 0, billRevenue: 0, discount: 0, retailBills: 0, retailRevenue: 0 }
+        monthSales.forEach((s: any) => {
+          if (s._refund) return
+          const wholesaleSaving = (Array.isArray(s.promos) ? s.promos : [])
+            .filter((p: any) => p?.name === WHOLESALE_NAME)
+            .reduce((sum: number, p: any) => sum + (Number(p.saving) || 0), 0)
+          if (wholesaleSaving > 0) {
+            ws.bills += 1; ws.billRevenue += Number(s.total_amount) || 0; ws.discount += wholesaleSaving
+          } else {
+            ws.retailBills += 1; ws.retailRevenue += Number(s.total_amount) || 0
+          }
+        })
+        setWholesaleMix(ws)
+
         // Slow movers: active products with zero sales in the last 30 days
         const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)).toISOString()
         const last30Sales = (salesData || []).filter(s => s.created_at >= thirtyDaysAgo)
@@ -248,6 +269,7 @@ export default function ReportsPage() {
         setDowData([])
         setHourData([])
         setPaymentMix([])
+        setWholesaleMix({ bills: 0, billRevenue: 0, discount: 0, retailBills: 0, retailRevenue: 0 })
         setSlowMovers((products || []).filter((p: any) => p.is_active !== false).map((p: any) => ({ name: p.name, stock: Number(p.stock) || 0 })))
         setBestWorstDay({ bestDate: null, bestAmt: 0, worstDate: null, worstAmt: 0 })
       }
@@ -607,6 +629,43 @@ export default function ReportsPage() {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* Wholesale vs retail */}
+            <div className="bg-white rounded-[3rem] p-8 border border-slate-100 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="bg-sky-100 p-3 rounded-2xl text-sky-600"><Layers size={20}/></div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-sm uppercase tracking-tight">Wholesale vs Retail</h3>
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">This Month · bills with at least one wholesale line</p>
+                </div>
+              </div>
+              {wholesaleMix.bills + wholesaleMix.retailBills > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-5 rounded-2xl bg-sky-50">
+                    <p className="text-[10px] font-black uppercase text-sky-600 tracking-widest">Wholesale bills</p>
+                    <p className="text-2xl font-black text-slate-800">{wholesaleMix.bills}</p>
+                    <p className="text-xs font-bold text-slate-500">฿{wholesaleMix.billRevenue.toLocaleString()}</p>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-slate-50">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Retail bills</p>
+                    <p className="text-2xl font-black text-slate-800">{wholesaleMix.retailBills}</p>
+                    <p className="text-xs font-bold text-slate-500">฿{wholesaleMix.retailRevenue.toLocaleString()}</p>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-amber-50">
+                    <p className="text-[10px] font-black uppercase text-amber-600 tracking-widest">Wholesale discount given</p>
+                    <p className="text-2xl font-black text-slate-800">฿{wholesaleMix.discount.toLocaleString()}</p>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-slate-50">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Wholesale share of revenue</p>
+                    <p className="text-2xl font-black text-slate-800">
+                      {Math.round((wholesaleMix.billRevenue / ((wholesaleMix.billRevenue + wholesaleMix.retailRevenue) || 1)) * 100)}%
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-10 text-slate-300 italic font-medium text-sm">ยังไม่มีข้อมูลเดือนนี้</div>
+              )}
             </div>
 
             {/* Best Sellers */}

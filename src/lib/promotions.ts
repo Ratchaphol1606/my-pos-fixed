@@ -1,6 +1,8 @@
 // Promotion engine. Pure functions only (no React, no database) so the same
 // rules are used by the checkout, the editor and the tests.
 
+import { WHOLESALE_NAME } from './priceTiers'
+
 export type PromoScope = 'product' | 'category' | 'bill'
 export type PromoType = 'percent' | 'amount' | 'bundle' | 'buy_get' | 'bill_percent' | 'bill_amount'
 
@@ -126,11 +128,16 @@ export interface PromoCartItem {
   category: string | null
   price: number
   qty: number
+  // Wholesale tier this quantity qualifies for, if any (see priceTiers.ts).
+  // It competes with the line promos: the customer gets whichever is cheaper,
+  // never both stacked.
+  tier?: { price: number; text: string } | null
 }
 
 export interface LinePromoResult {
   id: string
   saving: number               // baht saved on this line (0 = no promo)
+  wholesale: boolean           // true when the line is priced by a wholesale tier
   promoId: string | null
   promoName: string | null
   promoText: string | null     // e.g. "ซื้อ 2 แถม 1"
@@ -174,14 +181,32 @@ export function applyPromotions(
       if (saving > 0 && (!best || saving > best.saving)) best = { p, saving }
     }
     const gross = item.price * item.qty
-    const saving = best ? best.saving : 0
+    let saving = best ? best.saving : 0
+    let promoId = best ? best.p.id : null
+    let promoName = best ? best.p.name : null
+    let promoText = best ? describePromo(best.p) : null
+
+    // Wholesale tier vs. best promo: the cheaper one wins (a tie keeps the promo).
+    let wholesale = false
+    if (item.tier && item.tier.price < item.price) {
+      const tierSaving = round2((item.price - item.tier.price) * item.qty)
+      if (tierSaving > saving) {
+        saving = tierSaving
+        wholesale = true
+        promoId = null
+        promoName = WHOLESALE_NAME
+        promoText = item.tier.text
+      }
+    }
+
     const total = round2(gross - saving)
     return {
       id: item.id,
       saving,
-      promoId: best ? best.p.id : null,
-      promoName: best ? best.p.name : null,
-      promoText: best ? describePromo(best.p) : null,
+      wholesale,
+      promoId,
+      promoName,
+      promoText,
       total,
       unitPrice: item.qty > 0 ? total / item.qty : item.price,
     }

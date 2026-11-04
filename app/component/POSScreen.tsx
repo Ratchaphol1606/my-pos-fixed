@@ -10,6 +10,7 @@ import { Product, CartItem, ReceiptDetail, Settings, Customer } from '@/src/type
 import { printReceipt } from '@/src/lib/print'
 import { useDisplayBroadcaster, getOrCreatePairCode, resetPairCode, type DisplayState } from '@/src/lib/customerDisplay'
 import { applyPromotions, type Promotion } from '@/src/lib/promotions'
+import { describeTier, groupTiers, nextTier, resolveTier, type PriceTier } from '@/src/lib/priceTiers'
 
 export default function POSScreen({ testMode = false }: { testMode?: boolean }) {
   const [products, setProducts] = useState<Product[]>([])
@@ -29,12 +30,17 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
 
   // --- โปรโมชั่น --- active promos, refreshed whenever the screen comes back into view
   const [promos, setPromos] = useState<Promotion[]>([])
+  // Wholesale tiers (ราคาส่ง), loaded and refreshed together with the promos.
+  const [tiersByProduct, setTiersByProduct] = useState<Map<string, PriceTier[]>>(new Map())
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       const { data, error } = await supabase.from('promotions').select('*').eq('is_active', true)
       // If the table doesn't exist yet, just run without promos.
       if (!cancelled) setPromos(error ? [] : ((data ?? []) as Promotion[]))
+      const { data: tierRows, error: tierError } = await supabase.from('product_price_tiers').select('*')
+      // Same for tiers: no table yet means no wholesale prices.
+      if (!cancelled) setTiersByProduct(tierError ? new Map() : groupTiers((tierRows ?? []) as PriceTier[]))
     }
     load()
     const onVisible = () => { if (document.visibilityState === 'visible') load() }
@@ -364,8 +370,16 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
 
   // Promotions first (line promos, then the bill-level promo on what's left),
   // then the manual discount and points on top.
+  // A wholesale tier competes with the line promos: the customer gets the
+  // cheaper of the two (never both). See applyPromotions.
   const promo = applyPromotions(
-    cart.map(item => ({ id: item.id, category: item.category ?? null, price: item.retail_price, qty: item.qty })),
+    cart.map(item => {
+      const tier = resolveTier(tiersByProduct.get(item.id), item.qty)
+      return {
+        id: item.id, category: item.category ?? null, price: item.retail_price, qty: item.qty,
+        tier: tier ? { price: tier.unit_price, text: describeTier(tier) } : null,
+      }
+    }),
     promos,
     { isMember: !!selectedCustomer },
   )
@@ -697,6 +711,16 @@ export default function POSScreen({ testMode = false }: { testMode?: boolean }) 
                     🏷 {promoByLine.get(item.id)?.promoName} · {promoByLine.get(item.id)?.promoText}
                   </p>
                 )}
+                {(() => {
+                  // "Add N more" nudge towards the next wholesale tier.
+                  const next = nextTier(tiersByProduct.get(item.id), item.qty)
+                  if (!next) return null
+                  return (
+                    <p className="mt-1 text-[10px] font-bold text-sky-600">
+                      เพิ่มอีก {next.min_qty - item.qty} ชิ้น ได้ราคาส่ง ฿{next.unit_price.toLocaleString()}/ชิ้น
+                    </p>
+                  )
+                })()}
               </div>
               <div className="flex flex-col items-end gap-1">
                 {(promoByLine.get(item.id)?.saving ?? 0) > 0 ? (

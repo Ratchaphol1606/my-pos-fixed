@@ -6,6 +6,7 @@ import { Product, Settings } from '@/src/types'
 import BarcodeLabel from '../component/BarcodeLabel'
 import CameraScanner from '../component/CameraScanner'
 import PromoEditor from '../component/PromoEditor'
+import PriceTierEditor from '../component/PriceTierEditor'
 import { PRODUCT_CATEGORIES } from '@/src/lib/categories'
 import { useRole } from '@/src/lib/RoleContext'
 import { describePromo, type Promotion } from '@/src/lib/promotions'
@@ -311,6 +312,24 @@ export default function ProductPage() {
                   value={form.stock} onChange={e => setForm({...form, stock: Number(e.target.value)})} />
               </div>
             </div>
+
+            {/* Wholesale tiers for this product (admin only). Needs the product saved first. */}
+            {role === 'admin' && (
+              <div className="pt-6 border-t border-slate-100">
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-3 block">
+                  ราคาส่ง (ซื้อจำนวนมากถูกลง)
+                </label>
+                {isEditing ? (
+                  <PriceTierEditor
+                    productId={form.id}
+                    retailPrice={Number(form.retailPrice)}
+                    costPrice={Number(form.costPrice)}
+                  />
+                ) : (
+                  <p className="text-xs text-slate-400 font-bold">บันทึกสินค้าก่อน แล้วกดแก้ไขเพื่อตั้งราคาส่ง</p>
+                )}
+              </div>
+            )}
 
             {/* Promotions for this product (admin only). Needs the product saved first. */}
             {role === 'admin' && (
