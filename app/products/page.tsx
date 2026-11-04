@@ -20,6 +20,8 @@ export default function ProductPage() {
   const [showHidden, setShowHidden] = useState(false)
   const [loading, setLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  // Set by PriceTierEditor: saves any unsaved wholesale rows when UPDATE is pressed.
+  const tierFlushRef = useRef<(() => Promise<{ ok: boolean; error?: string }>) | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [form, setForm] = useState({ id: '', name: '', category: 'ทั่วไป', costPrice: 0, retailPrice: 0, stock: 0 })
   const [labelProduct, setLabelProduct] = useState<Product | null>(null)
@@ -134,7 +136,19 @@ export default function ProductPage() {
       });
 
       if (error) throw error
-      
+
+      // Save any wholesale rows typed but not saved yet. Done after the product
+      // itself so the tiers are checked against the new retail price. If it
+      // fails the form stays open, so the rows aren't thrown away.
+      if (isEditing && tierFlushRef.current) {
+        const r = await tierFlushRef.current()
+        if (!r.ok) {
+          alert('✅ อัปเดตข้อมูลสินค้าแล้ว แต่บันทึกราคาส่งไม่สำเร็จ: ' + (r.error ?? ''))
+          fetchProducts()
+          return
+        }
+      }
+
       alert(isEditing ? '✅ อัปเดตข้อมูลแล้ว' : '✅ บันทึกสินค้าใหม่แล้ว')
       resetForm()
       fetchProducts()
@@ -324,6 +338,7 @@ export default function ProductPage() {
                     productId={form.id}
                     retailPrice={Number(form.retailPrice)}
                     costPrice={Number(form.costPrice)}
+                    flushRef={tierFlushRef}
                   />
                 ) : (
                   <p className="text-xs text-slate-400 font-bold">บันทึกสินค้าก่อน แล้วกดแก้ไขเพื่อตั้งราคาส่ง</p>

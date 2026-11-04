@@ -5,11 +5,16 @@ import { supabase } from '@/src/lib/supabase'
 import { apiFetch } from '@/src/lib/apiFetch'
 import { tiersBelowCost, validateTiers, type PriceTier } from '@/src/lib/priceTiers'
 
+type SaveResult = { ok: boolean; error?: string }
+
 interface Props {
   productId: string
   retailPrice: number
   costPrice: number
   onChanged?: () => void
+  // The product form's UPDATE button calls this so tier rows that were typed
+  // but not saved yet are saved together with the product instead of being lost.
+  flushRef?: { current: (() => Promise<SaveResult>) | null }
 }
 
 interface Row { min_qty: string; unit_price: string }
@@ -17,11 +22,12 @@ interface Row { min_qty: string; unit_price: string }
 const toTiers = (rows: Row[]): PriceTier[] =>
   rows.map(r => ({ min_qty: Number(r.min_qty), unit_price: Number(r.unit_price) }))
 
-export default function PriceTierEditor({ productId, retailPrice, costPrice, onChanged }: Props) {
+export default function PriceTierEditor({ productId, retailPrice, costPrice, onChanged, flushRef }: Props) {
   const [rows, setRows] = useState<Row[]>([])
   const [saved, setSaved] = useState('')       // JSON of what is in the database
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -32,18 +38,19 @@ export default function PriceTierEditor({ productId, retailPrice, costPrice, onC
   }, [productId])
 
   // Reload whenever a different product is opened for editing.
-  useEffect(() => { load() }, [load])
+  useEffect(() => { setNotice(null); load() }, [load])
 
   const dirty = JSON.stringify(rows) !== saved
-  const tiers = toTiers(rows)
+  // Rows left completely blank (clicked "add" but never filled in) are ignored.
+  const tiers = toTiers(rows.filter(r => r.min_qty !== '' || r.unit_price !== ''))
   const belowCost = tiersBelowCost(tiers.filter(t => Number.isFinite(t.unit_price)), costPrice)
 
   const update = (i: number, patch: Partial<Row>) =>
     setRows(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
 
-  const save = async () => {
+  const persist = async (): Promise<SaveResult> => {
     const problem = validateTiers(tiers, retailPrice)
-    if (problem) { setError(problem); return }
+    if (problem) { setError(problem); return { ok: false, error: problem } }
     setBusy(true); setError(null)
     try {
       const res = await apiFetch('/api/price-tiers', {
@@ -52,10 +59,25 @@ export default function PriceTierEditor({ productId, retailPrice, costPrice, onC
         body: JSON.stringify({ action: 'save', product_id: productId, tiers }),
       })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok || json.ok !== true) { setError(json.error || 'บันทึกไม่สำเร็จ'); return }
+      if (!res.ok || json.ok !== true) {
+        const msg = json.error || 'บันทึกไม่สำเร็จ'
+        setError(msg)
+        return { ok: false, error: msg }
+      }
       await load(); onChanged?.()
+      setNotice('บันทึกราคาส่งแล้ว ✓')
+      return { ok: true }
     } finally { setBusy(false) }
   }
+  const save = async () => { await persist() }
+
+  // Hand the parent a way to save pending rows (re-registered every render so it
+  // always sees the latest rows). Nothing pending means nothing to do.
+  useEffect(() => {
+    if (!flushRef) return
+    flushRef.current = async () => (dirty ? persist() : { ok: true })
+    return () => { flushRef.current = null }
+  })
 
   const inputCls = 'w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm bg-white'
 
@@ -94,6 +116,12 @@ export default function PriceTierEditor({ productId, retailPrice, costPrice, onC
         </p>
       )}
       {error && <p className="p-3 rounded-xl bg-red-50 text-red-600 text-xs font-bold">{error}</p>}
+      {notice && !dirty && !error && (
+        <p className="text-xs font-bold text-emerald-600">{notice}</p>
+      )}
+      {dirty && !error && (
+        <p className="text-xs font-bold text-sky-600">ยังไม่ได้บันทึกราคาส่ง — กด “บันทึกราคาส่ง” หรือ UPDATE ด้านขวา</p>
+      )}
 
       <div className="flex gap-2">
         <button
