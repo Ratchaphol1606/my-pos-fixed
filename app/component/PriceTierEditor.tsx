@@ -45,6 +45,14 @@ export default function PriceTierEditor({ productId, retailPrice, costPrice, onC
   const tiers = toTiers(rows.filter(r => r.min_qty !== '' || r.unit_price !== ''))
   const belowCost = tiersBelowCost(tiers.filter(t => Number.isFinite(t.unit_price)), costPrice)
 
+  // Profit per piece and margin % (of the selling price, same as the product page).
+  // Only meaningful once a cost is set and the price field is filled in.
+  const marginInfo = (price: number, filled: boolean) => {
+    if (!filled || !Number.isFinite(price) || price <= 0 || !(costPrice > 0)) return null
+    return { perPiece: price - costPrice, percent: ((price - costPrice) / price) * 100 }
+  }
+  const retailMargin = marginInfo(retailPrice, true)
+
   const update = (i: number, patch: Partial<Row>) =>
     setRows(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
 
@@ -86,13 +94,19 @@ export default function PriceTierEditor({ productId, retailPrice, costPrice, onC
       <p className="text-xs text-slate-400 font-bold flex items-center gap-2">
         <Layers size={14} /> ปกติ ฿{retailPrice.toLocaleString()}/ชิ้น · ซื้อตั้งแต่จำนวนที่กำหนดขึ้นไป ได้ราคาส่งต่อชิ้น
       </p>
+      {retailMargin && (
+        <p className="text-xs font-bold text-slate-500">
+          ทุน ฿{costPrice.toLocaleString()} · กำไรราคาปกติ ฿{retailMargin.perPiece.toLocaleString(undefined, { maximumFractionDigits: 2 })}/ชิ้น ({retailMargin.percent.toFixed(1)}%)
+        </p>
+      )}
 
       {rows.length === 0 && (
         <p className="text-xs text-slate-400 font-bold">ยังไม่มีราคาส่ง</p>
       )}
 
       {rows.map((r, i) => (
-        <div key={i} className="flex items-end gap-3">
+        <div key={i}>
+        <div className="flex items-end gap-3">
           <div className="flex-1">
             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 block">ซื้อตั้งแต่ (ชิ้น)</label>
             <input type="number" min="2" className={inputCls} value={r.min_qty}
@@ -107,6 +121,16 @@ export default function PriceTierEditor({ productId, retailPrice, costPrice, onC
             className="p-3 rounded-xl bg-red-50 text-red-500" title="ลบขั้นนี้">
             <Trash2 size={15} />
           </button>
+        </div>
+        {(() => {
+          const m = marginInfo(Number(r.unit_price), r.unit_price !== '')
+          if (!m) return null
+          return (
+            <p className={`mt-1 text-xs font-bold ${m.perPiece < 0 ? 'text-red-600' : 'text-slate-500'}`}>
+              {m.perPiece < 0 ? 'ขาดทุน' : 'กำไร'} ฿{Math.abs(m.perPiece).toLocaleString(undefined, { maximumFractionDigits: 2 })}/ชิ้น ({m.percent.toFixed(1)}%)
+            </p>
+          )
+        })()}
         </div>
       ))}
 
