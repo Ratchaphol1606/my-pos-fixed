@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   })
 
   const res = NextResponse.json({ ok: true, user, exp, hasPin: !!pinRow, unlock })
-  res.cookies.set(SESSION_COOKIE, session, sessionCookieOptions)
+  res.cookies.set(SESSION_COOKIE, session, { ...sessionCookieOptions, expires: new Date(exp) })
   return res
 }
 

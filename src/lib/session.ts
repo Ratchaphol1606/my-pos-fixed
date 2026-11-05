@@ -5,12 +5,12 @@
 // server-only SUPABASE_SERVICE_ROLE_KEY (so there is no extra env var to manage):
 //
 //   session  httpOnly cookie `pos_session`. Says "this browser logged in as user U,
-//            role R, and that login is good until `exp`". It is a session cookie (gone
-//            when the browser closes) and is dead after the daily cutoff.
+//            role R, and that login is good until `exp`". The cookie expires at the daily
+//            cutoff, so it survives closing the browser but not the next 04:00.
 //
-//   unlock   held in page memory only, never in a cookie or localStorage, and sent as the
-//            `x-pos-unlock` header. A page refresh loses it, which is what brings the PIN
-//            lock screen back. Sensitive API routes require it.
+//   unlock   kept in localStorage by the client (apiFetch.ts) and sent as the
+//            `x-pos-unlock` header. Lock and Logout clear it, which is what brings the PIN
+//            screen back. Sensitive API routes require it.
 
 export const SESSION_COOKIE = 'pos_session'
 export const UNLOCK_HEADER = 'x-pos-unlock'
@@ -21,7 +21,8 @@ export type SessionClaims = { t: 'session'; u: string; r: StaffRole; n: string; 
 export type UnlockClaims = { t: 'unlock'; u: string; exp: number }
 type Claims = SessionClaims | UnlockClaims
 
-// No maxAge on purpose: a session cookie, cleared when the browser/app is closed.
+// No maxAge here: the login route sets `expires` to the daily cutoff, so the cookie
+// survives closing the browser/app and dies at the next 04:00 Thailand time.
 export const sessionCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',

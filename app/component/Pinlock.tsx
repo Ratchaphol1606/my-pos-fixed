@@ -4,21 +4,21 @@ import { usePathname } from 'next/navigation'
 import { Lock, Delete, Eye, EyeOff } from 'lucide-react'
 import { RoleContext, AuthContext, type AuthUser } from '@/src/lib/RoleContext'
 import { supabase } from '@/src/lib/supabase'
-import { apiFetch, setUnlockToken } from '@/src/lib/apiFetch'
+import { apiFetch, readStoredUnlock, setUnlockToken } from '@/src/lib/apiFetch'
 import { usernameToEmail } from '@/src/lib/staffEmail'
 
 // The front door of the whole app (the file keeps its old name so layout.tsx
 // doesn't change). One component, five states:
 //
 //   booting   checking whether this tab already has a login
-//   login     username + password            (new tab, app reopened, new day, logged out)
+//   login     username + password            (first visit, new day, logged out)
 //   setup     choose your 4-digit PIN        (first login only)
-//   locked    PIN pad                        (page was refreshed, or Lock was pressed)
+//   locked    PIN pad                        (Lock was pressed)
 //   unlocked  the app
 //
-// The unlock state lives only in React state + a module variable, so refreshing
-// the page always lands on `locked`. Closing the tab/app drops the Supabase login
-// (sessionStorage), and the server kills every login at the 04:00 cutoff.
+// The Supabase login and the unlock token both live in localStorage, so refreshing
+// or reopening the app goes straight back in. Lock clears the unlock token (PIN
+// screen next), and the server kills every login at the 04:00 Thailand cutoff.
 
 type Phase = 'booting' | 'login' | 'setup' | 'locked' | 'unlocked'
 type PinResult = { ok: boolean; message?: string }
@@ -268,8 +268,7 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
     setPhase('locked')
   }, [])
 
-  // On every full page load: is this tab still logged in? If so the PIN screen
-  // comes up, which is the "re-unlock on refresh" behaviour.
+  // On every full page load: is this browser still logged in today? If so, resume.
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -285,7 +284,15 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
         if (json?.ok && json.hasPin) {
           setUser(json.user)
           setExp(json.exp)
-          setPhase('locked')
+          // Still holding a valid unlock from earlier today: straight back into the app.
+          // No stored unlock means Lock was pressed (or it expired): PIN screen.
+          const stored = readStoredUnlock(json.user.id)
+          if (stored) {
+            setUnlockToken(stored)
+            setPhase('unlocked')
+          } else {
+            setPhase('locked')
+          }
           return
         }
         // Login without a valid POS session, or PIN setup never finished: start over.
@@ -421,7 +428,7 @@ export default function PinLock({ children }: { children: React.ReactNode }) {
         <PinPad
           key={setupFirst === null ? 'setup-1' : 'setup-2'}
           title={setupFirst === null ? 'ตั้ง PIN 4 หลัก' : 'ยืนยัน PIN อีกครั้ง'}
-          subtitle={`สวัสดี ${user.displayName} · ใช้ปลดล็อกเมื่อรีเฟรชหน้าจอ`}
+          subtitle={`สวัสดี ${user.displayName} · ใช้ปลดล็อกหลังกดล็อกหน้าจอ`}
           notice={setupNotice}
           onComplete={handleSetup}
         />
