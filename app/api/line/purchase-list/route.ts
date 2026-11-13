@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   const total = rows.reduce((s, r) => s + r.cost * r.qty, 0)
   const totalQty = rows.reduce((s, r) => s + r.qty, 0)
 
-  const lines = rows.map((r, i) => `${i + 1}. ${r.name} x${r.qty} = ฿${baht(r.cost * r.qty)}`)
+  const lines = rows.map((r, i) => `${i + 1}. ${r.name} (฿${baht(r.cost)} x ${r.qty}) = ฿${baht(r.cost * r.qty)}`)
   const header = `🛒 ของที่ต้องซื้อ (${date})`
   const footer = `รวมประมาณ ฿${baht(total)} (${rows.length} รายการ · ${totalQty} ชิ้น)`
 
