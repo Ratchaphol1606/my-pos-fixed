@@ -1,12 +1,13 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Trash2, Edit3, Plus, Search, AlertCircle, X, Save, Tag, Barcode, Printer, Camera } from 'lucide-react'
+import { Trash2, Edit3, Plus, Search, AlertCircle, X, Save, Tag, Barcode, Printer, Camera, ShoppingBasket } from 'lucide-react'
 import { Product, Settings } from '@/src/types'
 import BarcodeLabel from '../component/BarcodeLabel'
 import CameraScanner from '../component/CameraScanner'
 import PromoEditor from '../component/PromoEditor'
 import PriceTierEditor from '../component/PriceTierEditor'
+import PurchaseListModal from '../component/PurchaseListModal'
 import { PRODUCT_CATEGORIES } from '@/src/lib/categories'
 import { useRole } from '@/src/lib/RoleContext'
 import { describePromo, type Promotion } from '@/src/lib/promotions'
@@ -27,7 +28,9 @@ export default function ProductPage() {
   const [labelProduct, setLabelProduct] = useState<Product | null>(null)
   const [showPreviewLabel, setShowPreviewLabel] = useState(false)
   const [showCameraScanner, setShowCameraScanner] = useState(false)
-  
+  const [showPurchaseList, setShowPurchaseList] = useState(false)
+  const [purchaseCount, setPurchaseCount] = useState(0)
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
@@ -204,14 +207,25 @@ export default function ProductPage() {
             </h1>
             <p className="text-slate-500 font-medium">จัดการสต็อกสินค้าและต้นทุนอย่างเป็นระบบ</p>
           </div>
-          <button
-            onClick={() => { setShowHidden(h => !h); setCurrentPage(1) }}
-            className={`px-5 py-3 rounded-2xl font-bold text-sm transition-all ${
-              showHidden ? 'bg-amber-500 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
-            }`}
-          >
-            {showHidden ? '← กลับไปสินค้าที่ใช้งาน' : 'สินค้าที่ซ่อนไว้'}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <button
+              onClick={() => setShowPurchaseList(true)}
+              className="px-5 py-3 rounded-2xl font-bold text-sm transition-all bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
+            >
+              <ShoppingBasket size={16} /> ของที่ต้องซื้อ
+              {purchaseCount > 0 && (
+                <span className="bg-white text-blue-600 rounded-full text-[11px] font-black px-2 py-0.5">{purchaseCount}</span>
+              )}
+            </button>
+            <button
+              onClick={() => { setShowHidden(h => !h); setCurrentPage(1) }}
+              className={`px-5 py-3 rounded-2xl font-bold text-sm transition-all ${
+                showHidden ? 'bg-amber-500 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              {showHidden ? '← กลับไปสินค้าที่ใช้งาน' : 'สินค้าที่ซ่อนไว้'}
+            </button>
+          </div>
         </header>
 
         {/* --- Input Section --- */}
@@ -555,6 +569,14 @@ export default function ProductPage() {
           }
         }}
         onClose={() => setShowCameraScanner(false)}
+      />
+
+      {/* Always mounted so the saved list loads and the button badge
+          shows its count; renders nothing while closed. */}
+      <PurchaseListModal
+        open={showPurchaseList}
+        onClose={() => setShowPurchaseList(false)}
+        onCountChange={setPurchaseCount}
       />
     </div>
   )
