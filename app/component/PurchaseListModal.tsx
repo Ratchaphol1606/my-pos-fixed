@@ -1,8 +1,9 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { supabase } from '@/src/lib/supabase'
-import { Search, X, Plus, Minus, Trash2, ShoppingBasket } from 'lucide-react'
+import { Search, X, Plus, Minus, Trash2, ShoppingBasket, Send } from 'lucide-react'
 import { Product } from '@/src/types'
+import { apiFetch } from '@/src/lib/apiFetch'
 
 // Simple "things to buy" list. Lives in this browser only (localStorage),
 // so it opens instantly and needs no database table.
@@ -27,6 +28,7 @@ export default function PurchaseListModal({
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<Product[]>([])
   const [searching, setSearching] = useState(false)
+  const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent'>('idle')
 
   // Load saved list once
   useEffect(() => {
@@ -90,6 +92,28 @@ export default function PurchaseListModal({
 
   const clearAll = () => {
     if (items.length && confirm('ล้างรายการทั้งหมด?')) setItems([])
+  }
+
+  const sendToLine = async () => {
+    if (!items.length || sendState === 'sending') return
+    setSendState('sending')
+    try {
+      const res = await apiFetch('/api/line/purchase-list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: items.map(i => ({ name: i.name, qty: i.qty, cost: i.cost })) }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (res.ok && json.ok) {
+        setSendState('sent')
+        setTimeout(() => setSendState('idle'), 2500)
+        return
+      }
+      alert(json.error ?? 'ส่งเข้าไลน์ไม่สำเร็จ')
+    } catch {
+      alert('เชื่อมต่อไม่ได้ กรุณาลองใหม่อีกครั้ง')
+    }
+    setSendState('idle')
   }
 
   const total = items.reduce((s, i) => s + i.cost * i.qty, 0)
@@ -218,13 +242,23 @@ export default function PurchaseListModal({
             </div>
             <div className="text-2xl font-black text-slate-900">฿{baht(total)}</div>
           </div>
-          <button
-            onClick={clearAll}
-            disabled={items.length === 0}
-            className="px-4 py-2 rounded-2xl text-xs font-bold text-red-500 bg-white border border-red-100 hover:bg-red-50 disabled:opacity-40"
-          >
-            ล้างรายการ
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={sendToLine}
+              disabled={items.length === 0 || sendState === 'sending'}
+              className="px-4 py-2 rounded-2xl text-xs font-bold text-white bg-[#06C755] hover:bg-[#05b34c] disabled:opacity-40 flex items-center gap-1.5"
+            >
+              <Send size={14} />
+              {sendState === 'sending' ? 'กำลังส่ง...' : sendState === 'sent' ? 'ส่งแล้ว ✓' : 'ส่งไลน์'}
+            </button>
+            <button
+              onClick={clearAll}
+              disabled={items.length === 0}
+              className="px-4 py-2 rounded-2xl text-xs font-bold text-red-500 bg-white border border-red-100 hover:bg-red-50 disabled:opacity-40"
+            >
+              ล้างรายการ
+            </button>
+          </div>
         </div>
       </div>
     </div>
