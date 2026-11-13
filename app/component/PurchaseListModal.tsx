@@ -1,8 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { supabase } from '@/src/lib/supabase'
-import { Search, X, Plus, Minus, Trash2, ShoppingBasket, FileDown } from 'lucide-react'
+import { Search, X, Plus, Minus, Trash2, ShoppingBasket } from 'lucide-react'
 import { Product } from '@/src/types'
 
 // Simple "things to buy" list. Lives in this browser only (localStorage),
@@ -99,7 +98,6 @@ export default function PurchaseListModal({
   if (!open) return null
 
   return (
-    <>
     <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={onClose}>
       <div
         className="bg-white w-full sm:max-w-2xl h-[92vh] sm:h-auto sm:max-h-[85vh] rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden"
@@ -220,77 +218,15 @@ export default function PurchaseListModal({
             </div>
             <div className="text-2xl font-black text-slate-900">฿{baht(total)}</div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => window.print()}
-              disabled={items.length === 0}
-              className="px-4 py-2 rounded-2xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1.5"
-            >
-              <FileDown size={14} /> บันทึก PDF
-            </button>
-            <button
-              onClick={clearAll}
-              disabled={items.length === 0}
-              className="px-4 py-2 rounded-2xl text-xs font-bold text-red-500 bg-white border border-red-100 hover:bg-red-50 disabled:opacity-40"
-            >
-              ล้างรายการ
-            </button>
-          </div>
+          <button
+            onClick={clearAll}
+            disabled={items.length === 0}
+            className="px-4 py-2 rounded-2xl text-xs font-bold text-red-500 bg-white border border-red-100 hover:bg-red-50 disabled:opacity-40"
+          >
+            ล้างรายการ
+          </button>
         </div>
       </div>
     </div>
-
-    {/* Print-only copy of the list. Rendered straight into <body> so the
-        print dialog (Save as PDF / Share → Save to Files) shows only this. */}
-    {items.length > 0 &&
-      createPortal(
-        <div className="purchase-print-root">
-          <style>{`
-            .purchase-print-root { display: none; }
-            @media print {
-              body > *:not(.purchase-print-root) { display: none !important; }
-              .purchase-print-root { display: block; padding: 24px; color: #000; background: #fff; }
-              .purchase-print-root h1 { font-size: 20px; font-weight: 800; margin: 0 0 4px; }
-              .purchase-print-root .pp-date { font-size: 12px; color: #555; margin-bottom: 16px; }
-              .purchase-print-root table { width: 100%; border-collapse: collapse; font-size: 13px; }
-              .purchase-print-root th, .purchase-print-root td { border-bottom: 1px solid #ccc; padding: 6px 4px; text-align: left; }
-              .purchase-print-root .r { text-align: right; }
-              .purchase-print-root tr { page-break-inside: avoid; }
-              .purchase-print-root .pp-total { margin-top: 14px; text-align: right; font-size: 16px; font-weight: 800; }
-            }
-          `}</style>
-          <h1>รายการของที่ต้องซื้อ</h1>
-          <div className="pp-date">
-            {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>สินค้า</th>
-                <th className="r">จำนวน</th>
-                <th className="r">ทุน/ชิ้น</th>
-                <th className="r">รวม</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((i, idx) => (
-                <tr key={i.id}>
-                  <td>{idx + 1}</td>
-                  <td>{i.name}</td>
-                  <td className="r">{i.qty}</td>
-                  <td className="r">{baht(i.cost)}</td>
-                  <td className="r">{baht(i.cost * i.qty)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="pp-total">
-            รวมประมาณ ฿{baht(total)} ({items.length} รายการ · {totalQty} ชิ้น)
-          </div>
-        </div>,
-        document.body
-      )}
-    </>
   )
 }
