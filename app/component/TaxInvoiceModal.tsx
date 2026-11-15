@@ -130,7 +130,7 @@ export default function TaxInvoiceModal({ sale, settings, onClose }: TaxInvoiceM
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `invoice-${snap.receiptNo}.pdf`
+      a.download = `receipt-${snap.receiptNo}.pdf`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -171,7 +171,7 @@ export default function TaxInvoiceModal({ sale, settings, onClose }: TaxInvoiceM
           )}
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>ใบเสร็จรับเงิน / ใบกำกับภาษี</div>
+          <div style={{ fontSize: 22, fontWeight: 700 }}>ใบเสร็จรับเงิน</div>
           <div style={{ fontSize: 14, color: '#64748b', marginTop: 6 }}>เลขที่ {snap.receiptNo}</div>
           <div style={{ fontSize: 14, color: '#64748b' }}>
             วันที่ {dateText || '........................................'}
@@ -312,7 +312,7 @@ export default function TaxInvoiceModal({ sale, settings, onClose }: TaxInvoiceM
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="text-lg font-bold">ใบเสร็จรับเงิน / ใบกำกับภาษี</h2>
+          <h2 className="text-lg font-bold">ใบเสร็จรับเงิน</h2>
           <button
             onClick={onClose}
             className="p-2 rounded-xl hover:bg-slate-100 text-slate-500"
